@@ -1,19 +1,6 @@
-# --- Python ---
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
 
 # --- Tools / binaries ---
 tools/
-
-# --- Environnements virtuels ---
-.venv/
-venv/
-
-# --- OS ---
-.DS_Store
-Thumbs.db
 
 # --- Audio temporaires / exports ---
 *.wav
@@ -30,7 +17,44 @@ Thumbs.db
 .vscode/
 .idea/
 
-# --- Notes ---
+### Python cache ###
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
 
+### Environnements virtuels ###
+.venv/
+.venv-build/
+venv/
+
+### Builds / packaging ###
+build/
+dist/
+releases/
+AppDir/
+squashfs-root/
+*.spec
+*.AppImage
+
+### Checksums ###
+*.sha256
+*.sha256sum
+SHA256SUMS*.txt
+
+### Archives de release ###
+*.zip
+*.tar.gz
+*.dmg
+*.exe
+
+### Fichiers personnels ###
 *.odt
 *.pdf
+.~lock.*
+
+### macOS ###
+.DS_Store
+
+### Win ###
+Thumbs.db

@@ -36,6 +36,24 @@ def render(audio: np.ndarray, sr: int, params: Params) -> RenderResult:
 
     segments = slice_into_random_grains(audio, rng, min_s, max_s)
 
+    # --- Warp (time-stretch / pitch) ---------------------------------
+    # Appliqué avant le reorder/reverse/gain.
+    # Dépendance optionnelle: si warp_amount > 0, librosa doit être installé.
+    if float(np.clip(getattr(params, "warp_amount", 0.0), 0.0, 1.0)) > 0.0:
+        try:
+            from warp_engine import warp_segments  # import lazy
+        except Exception as e:
+            raise RuntimeError("Warp activé, mais warp_engine n'est pas disponible.") from e
+
+        try:
+            segments = warp_segments(segments, sr, rng, params)
+        except RuntimeError:
+            # message déjà explicite (librosa manquant, etc.)
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Warp: échec lors du traitement des grains: {e}") from e
+
+
     # Garde une portion de segments à leur place
     n = len(segments)
     keep_n = int(round(n * keep_ratio))

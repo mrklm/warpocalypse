@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import os
+import math
 import threading
 import tkinter as tk
+import random
 from tkinter import ttk, filedialog, messagebox
 
 import numpy as np
@@ -13,19 +15,354 @@ from presets import Params, save_preset, load_preset
 from audio_io import load_audio, export_wav
 from engine import render
 
+APP_NAME = "Warpocalypse"
+APP_VERSION = "0.9.0"
 
-APP_TITLE = "Warpocalypse"
-DEFAULT_GEOMETRY = "980x640"
+APP_TITLE = APP_NAME
+DEFAULT_GEOMETRY = "1060x740"
 
+# --- Bibli de thèmes (issus de Garage) ---
+THEMES = {
+    # ===== Thèmes sombres (sobres / quotidiens) =====
+    "[Sombre] Midnight Garage": dict(
+        BG="#151515", PANEL="#1F1F1F", FIELD="#2A2A2A",
+        FG="#EAEAEA", FIELD_FG="#F0F0F0", ACCENT="#FF9800"
+    ),
+    "[Sombre] AIR-KLM Night flight": dict(
+        BG="#0B1E2D", PANEL="#102A3D", FIELD="#16384F",
+        FG="#EAF6FF", FIELD_FG="#FFFFFF", ACCENT="#00A1DE"
+    ),
+    "[Sombre] Café Serré": dict(
+        BG="#1B120C", PANEL="#2A1C14", FIELD="#3A281D",
+        FG="#F2E6D8", FIELD_FG="#FFF4E6", ACCENT="#C28E5C"
+    ),
+    "[Sombre] Matrix Déjà Vu": dict(
+        BG="#000A00", PANEL="#001F00", FIELD="#003300",
+        FG="#00FF66", FIELD_FG="#66FF99", ACCENT="#00FF00"
+    ),
+    "[Sombre] Miami Vice 1987": dict(
+        BG="#14002E", PANEL="#2B0057", FIELD="#004D4D",
+        FG="#FFF0FF", FIELD_FG="#FFFFFF", ACCENT="#00FFD5"
+    ),
+    "[Sombre] Cyber Licorne": dict(
+        BG="#1A0026", PANEL="#2E004F", FIELD="#3D0066",
+        FG="#F6E7FF", FIELD_FG="#FFFFFF", ACCENT="#FF2CF7"
+    ),
+    # ===== Thèmes clairs =====
+    "[Clair] AIR-KLM Day flight": dict(
+        BG="#EAF6FF", PANEL="#D6EEF9", FIELD="#FFFFFF",
+        FG="#0B2A3F", FIELD_FG="#0B2A3F", ACCENT="#00A1DE"
+    ),
+    "[Clair] Matin Brumeux": dict(
+        BG="#E6E7E8", PANEL="#D4D7DB", FIELD="#FFFFFF",
+        FG="#1E1F22", FIELD_FG="#1E1F22", ACCENT="#6B7C93"
+    ),
+    "[Clair] Latte Vanille": dict(
+        BG="#FAF6F1", PANEL="#EFE6DC", FIELD="#FFFFFF",
+        FG="#3D2E22", FIELD_FG="#3D2E22", ACCENT="#D8B892"
+    ),
+    "[Clair] Miellerie La Divette": dict(
+        BG="#E6B65C", PANEL="#F5E6CC", FIELD="#FFFFFF",
+        FG="#50371A", FIELD_FG="#50371A", ACCENT="#F2B705"
+    ),
+    # ===== Thèmes Pouêt-Pouêt =====
+    "[Pouêt] Chewing-gum Océan": dict(
+        BG="#00A6C8", PANEL="#0083A1", FIELD="#00C7B7",
+        FG="#082026", FIELD_FG="#082026", ACCENT="#FF4FD8"
+    ),
+    "[Pouêt] Pamplemousse": dict(
+        BG="#FF4A1C", PANEL="#E63B10", FIELD="#FF7A00",
+        FG="#1A0B00", FIELD_FG="#1A0B00", ACCENT="#00E5FF"
+    ),
+    "[Pouêt] Raisin Toxique": dict(
+        BG="#7A00FF", PANEL="#5B00C9", FIELD="#B000FF",
+        FG="#0F001A", FIELD_FG="#0F001A", ACCENT="#39FF14"
+    ),
+    "[Pouêt] Citron qui pique": dict(
+        BG="#FFF200", PANEL="#E6D800", FIELD="#FFF7A6",
+        FG="#1A1A00", FIELD_FG="#1A1A00", ACCENT="#0066FF"
+    ),
+    "[Pouêt] Barbie Apocalypse": dict(
+        BG="#FF1493", PANEL="#004D40", FIELD="#1B5E20",
+        FG="#E8FFF8", FIELD_FG="#FFFFFF", ACCENT="#FFEB3B"
+    ),
+    "[Pouêt] Compagnie Créole": dict(
+        BG="#8B3A1A", PANEL="#F2C94C", FIELD="#FFFFFF",
+        FG="#5A2E0C", FIELD_FG="#5A2E0C", ACCENT="#8B3A1A"
+    ),
+}
+
+WARP_STRETCH_SPAN_MAX = 0.60   # 0..1 -> 1±span
+WARP_PITCH_RANGE_MAX_ST = 12.0 # demi-tons
+
+
+# ---------------- UI widgets ----------------
+
+class RotaryKnobCanvas(tk.Canvas):
+    """Cadran rotatif (dial + graduation + aiguille) sur Canvas.
+    Le label et la valeur sont gérés par un widget conteneur (RotaryKnob).
+    """
+    def __init__(
+        self,
+        parent: tk.Misc,
+        var: tk.Variable,
+        from_: float,
+        to: float,
+        step: float = 0.01,
+        size: int = 78,
+        theme: dict[str, str] | None = None,
+    ) -> None:
+        # ttk.Frame ne supporte pas forcément -background (TclError). On récupère un fond cohérent.
+        try:
+            _bg = parent.cget("background")
+        except tk.TclError:
+            _bg = ""
+            try:
+                style = ttk.Style()
+                _bg = style.lookup(parent.winfo_class(), "background") or style.lookup("TFrame", "background")
+            except Exception:
+                _bg = ""
+            if not _bg:
+                try:
+                    _bg = parent.winfo_toplevel().cget("bg")
+                except Exception:
+                    _bg = "black"
+
+        self._theme = theme or {}
+        panel_bg = (theme.get("PANEL") if theme else _bg)
+
+        super().__init__(
+            parent,
+            width=size,
+            height=size,
+            highlightthickness=0,
+            bg=panel_bg,
+        )
+
+        self._var = var
+        self._from = float(from_)
+        self._to = float(to)
+        self._step = float(step)
+        self._size = int(size)
+        self._r = (self._size // 2) - 6
+        self._cx = self._size // 2
+        self._cy = self._size // 2
+
+        self._col_bg = self._theme.get("PANEL", self.cget("bg"))
+        self._col_dial = self._theme.get("FIELD", "#202020")
+        self._col_outline = self._theme.get("FG", "#888888")
+        self._col_accent = self._theme.get("ACCENT", "#9BE7A2")
+
+        self._drag_y: int | None = None
+        self._drag_start_val: float = float(self._get_value())
+
+        self._needle_id = None
+
+        self._draw_static()
+        self._redraw_dynamic()
+
+        # Interactions
+        self.bind("<Button-1>", self._on_down)
+        self.bind("<B1-Motion>", self._on_drag)
+        self.bind("<ButtonRelease-1>", self._on_up)
+
+        # Molette (Windows/macOS) + Linux (Button-4/5)
+        self.bind("<MouseWheel>", self._on_wheel)
+        self.bind("<Button-4>", lambda _e: self._nudge(+self._step))
+        self.bind("<Button-5>", lambda _e: self._nudge(-self._step))
+
+        # Update quand la variable change
+        try:
+            self._var.trace_add("write", lambda *_: self._redraw_dynamic())
+        except Exception:
+            pass
+
+    def set_theme(self, theme: dict[str, str] | None) -> None:
+        self._theme = theme or {}
+        self._col_bg = self._theme.get("PANEL", self.cget("bg"))
+        self._col_dial = self._theme.get("FIELD", "#202020")
+        self._col_outline = self._theme.get("FG", "#888888")
+        self._col_accent = self._theme.get("ACCENT", "#9BE7A2")
+        try:
+            self.configure(bg=self._theme.get("PANEL", self.cget("bg")))
+        except Exception:
+            pass
+        self._draw_static()
+        self._redraw_dynamic()
+
+    def _draw_static(self) -> None:
+        self.delete("all")
+
+        # Dial (cercle)
+        self.create_oval(
+            self._cx - self._r,
+            self._cy - self._r,
+            self._cx + self._r,
+            self._cy + self._r,
+            outline=self._col_outline,
+            width=2,
+            fill=self._col_dial,
+        )
+
+        # Graduation (petits traits) -135° -> +135°
+        n_ticks = 11
+        for i in range(n_ticks):
+            t = i / (n_ticks - 1) if n_ticks > 1 else 0.0
+            ang = math.radians(-135.0 + 270.0 * t)
+            r1 = self._r - 2
+            r2 = self._r - 10
+            x1 = self._cx + int(math.cos(ang) * r1)
+            y1 = self._cy + int(math.sin(ang) * r1)
+            x2 = self._cx + int(math.cos(ang) * r2)
+            y2 = self._cy + int(math.sin(ang) * r2)
+            self.create_line(x1, y1, x2, y2, fill=self._col_outline, width=2, capstyle="round")
+
+    def _get_value(self) -> float:
+        try:
+            return float(self._var.get())
+        except Exception:
+            return float(self._from)
+
+    def _set_value(self, v: float) -> None:
+        v = float(np.clip(v, self._from, self._to))
+        if self._step > 0:
+            v = round(v / self._step) * self._step
+        if abs(v) < 1e-12:
+            v = 0.0
+        self._var.set(v)
+
+    def _value_to_angle(self, v: float) -> float:
+        t = 0.0
+        if self._to != self._from:
+            t = (v - self._from) / (self._to - self._from)
+        t = float(np.clip(t, 0.0, 1.0))
+        return (-135.0 + 270.0 * t)
+
+    def _redraw_dynamic(self) -> None:
+        v = float(self._get_value())
+        angle = np.deg2rad(self._value_to_angle(v))
+        x2 = self._cx + int(np.cos(angle) * (self._r - 8))
+        y2 = self._cy + int(np.sin(angle) * (self._r - 8))
+
+        if self._needle_id is not None:
+            self.delete(self._needle_id)
+        self._needle_id = self.create_line(
+            self._cx, self._cy, x2, y2,
+            fill=self._col_accent, width=3, capstyle="round"
+        )
+
+    def _on_down(self, e: tk.Event) -> None:
+        self._drag_y = int(e.y)
+        self._drag_start_val = float(self._get_value())
+
+    def _on_drag(self, e: tk.Event) -> None:
+        if self._drag_y is None:
+            return
+        dy = int(self._drag_y) - int(e.y)
+        span = (self._to - self._from)
+        if span <= 0:
+            return
+        delta = (dy / 120.0) * span
+        self._set_value(self._drag_start_val + delta)
+
+    def _on_up(self, _e: tk.Event) -> None:
+        self._drag_y = None
+
+    def _nudge(self, delta: float) -> None:
+        self._set_value(float(self._get_value()) + float(delta))
+
+    def _on_wheel(self, e: tk.Event) -> None:
+        d = float(getattr(e, "delta", 0.0))
+        if d == 0.0:
+            return
+        self._nudge(self._step if d > 0 else -self._step)
+
+
+class RotaryKnob(ttk.Frame):
+    """Potard complet: Canvas + label + valeur (TTK labels).
+    Avantage: plus de clipping de texte car les labels ne sont plus dans le Canvas.
+    """
+    def __init__(
+        self,
+        parent: tk.Misc,
+        label: str,
+        var: tk.Variable,
+        from_: float,
+        to: float,
+        step: float = 0.01,
+        size: int = 78,
+        theme: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(parent, style="Panel.TFrame")
+        self._label_text = label
+        self._var = var
+        self._theme = theme or {}
+
+        self.canvas = RotaryKnobCanvas(self, var, from_, to, step=step, size=size, theme=theme)
+        self.canvas.grid(row=0, column=0, sticky="n", padx=2, pady=(0, 0))
+
+        self.lbl_name = ttk.Label(self, text=label, style="Panel.TLabel")
+        self.lbl_name.grid(row=1, column=0, sticky="n", pady=(2, 0))
+
+        self.lbl_value = ttk.Label(self, text="", style="Panel.TLabel")
+        self.lbl_value.grid(row=2, column=0, sticky="n", pady=(0, 0))
+
+        self.columnconfigure(0, weight=1)
+
+        self._update_value_text()
+
+        try:
+            self._var.trace_add("write", lambda *_: self._update_value_text())
+        except Exception:
+            pass
+
+    def _update_value_text(self) -> None:
+        try:
+            v = float(self._var.get())
+        except Exception:
+            v = 0.0
+        self.lbl_value.configure(text=f"{v:.2f}")
+
+    def set_theme(self, theme: dict[str, str] | None) -> None:
+        self._theme = theme or {}
+        try:
+            self.configure(style="Panel.TFrame")
+        except Exception:
+            pass
+        self.canvas.set_theme(theme)
+        # Les labels sont stylés via ttk.Style; ici on ne force rien.
+
+
+# ---------------- Application ----------------
 
 class WarpocalypseApp:
     def __init__(self) -> None:
         self.root = tk.Tk()
         self.root.title(APP_TITLE)
         self.root.geometry(DEFAULT_GEOMETRY)
+        try:
+            self.root.minsize(980, 680)
+        except Exception:
+            pass
+
+        # Style / Thèmes
+        self._style = ttk.Style()
+        try:
+            self._style.theme_use("clam")
+        except Exception:
+            pass
+
+        self.var_theme = tk.StringVar()
+        self.theme: dict[str, str] = {}
+        self._choose_random_theme()
 
         self.params = Params()
 
+        # Widgets dépendants du thème
+        self._knob_widgets: list[RotaryKnob] = []
+        self._col_accent = self.theme.get("ACCENT", "#9BE7A2")
+
+        # Audio
         self.src_path: str | None = None
         self.src_audio: np.ndarray | None = None
         self.src_sr: int | None = None
@@ -39,49 +376,142 @@ class WarpocalypseApp:
 
         self._build_ui()
 
+    def _choose_random_theme(self) -> None:
+        names = list(THEMES.keys())
+        if not names:
+            self.var_theme.set("")
+            self.theme = {}
+            return
+        name = random.choice(names)
+        self.var_theme.set(name)
+        self._apply_theme(name)
+
+    def _apply_theme(self, name: str) -> None:
+        theme = THEMES.get(name) or {}
+        self.theme = theme
+
+        bg = theme.get("BG", "#101010")
+        panel = theme.get("PANEL", "#1A1A1A")
+        field = theme.get("FIELD", "#222222")
+        fg = theme.get("FG", "#EAEAEA")
+        field_fg = theme.get("FIELD_FG", fg)
+        accent = theme.get("ACCENT", "#00A1DE")
+        self._col_accent = accent
+
+        # Tk background (root)
+        try:
+            self.root.configure(bg=bg)
+        except Exception:
+            pass
+
+        # TTK styles
+        s = self._style
+        s.configure(".", background=bg, foreground=fg)
+        s.configure("TFrame", background=bg)
+        s.configure("Panel.TFrame", background=panel)
+
+        s.configure("TLabel", background=bg, foreground=fg)
+        s.configure("Panel.TLabel", background=panel, foreground=fg)
+
+        s.configure("TButton", background=panel, foreground=fg)
+        s.map("TButton",
+              background=[("active", field), ("pressed", field)],
+              foreground=[("disabled", "#777777")])
+
+        s.configure("TScale", background=panel)
+        s.configure("Horizontal.TScale", background=panel)
+
+        s.configure("TEntry", fieldbackground=field, foreground=field_fg)
+        s.configure("TCombobox", fieldbackground=field, foreground=field_fg, background=panel)
+        s.map("TCombobox",
+              fieldbackground=[("readonly", field)],
+              foreground=[("readonly", field_fg)])
+
+        s.configure("TSpinbox", fieldbackground=field, foreground=field_fg, background=panel)
+        s.configure("TSeparator", background=bg)
+
+        # Widgets Tk (waveform canvas)
+        if hasattr(self, "canvas"):
+            try:
+                self.canvas.configure(bg=field)
+            except Exception:
+                pass
+            try:
+                self._redraw_waveform()
+            except Exception:
+                pass
+
+        # Potards
+        for k in getattr(self, "_knob_widgets", []):
+            try:
+                k.set_theme(theme)
+            except Exception:
+                pass
+
+    def _on_theme_change(self, _e: object = None) -> None:
+        name = str(self.var_theme.get())
+        if name in THEMES:
+            self._apply_theme(name)
+
     def run(self) -> None:
         self.root.mainloop()
 
     # ---------------- UI ----------------
 
     def _build_ui(self) -> None:
-        self.root.columnconfigure(0, weight=0)
-        self.root.columnconfigure(1, weight=1)
-        self.root.rowconfigure(0, weight=1)
+        # Topbar: thème + (petit) transport
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(1, weight=1)
 
-        left = ttk.Frame(self.root, padding=10)
-        left.grid(row=0, column=0, sticky="nsw")
+        topbar = ttk.Frame(self.root, padding=(10, 6), style="Panel.TFrame")
+        topbar.grid(row=0, column=0, sticky="ew")
+        topbar.columnconfigure(0, weight=1)
+
+        # Thème à droite
+        frm_theme = ttk.Frame(topbar, style="Panel.TFrame")
+        frm_theme.grid(row=0, column=1, sticky="e")
+        ttk.Label(frm_theme, text="Thème :", style="Panel.TLabel").grid(row=0, column=0, sticky="e", padx=(0, 6))
+        self.cmb_theme = ttk.Combobox(
+            frm_theme,
+            values=list(THEMES.keys()),
+            textvariable=self.var_theme,
+            state="readonly",
+            width=28,
+        )
+        self.cmb_theme.grid(row=0, column=1, sticky="e")
+        self.cmb_theme.bind("<<ComboboxSelected>>", self._on_theme_change)
+
+        # PanedWindow: gauche (contrôles) / droite (signal)
+        pw = ttk.Panedwindow(self.root, orient="horizontal")
+        pw.grid(row=1, column=0, sticky="nsew")
+
+        left = ttk.Frame(pw, padding=10, style="Panel.TFrame")
+        right = ttk.Frame(pw, padding=10, style="Panel.TFrame")
+        pw.add(left, weight=0)
+        pw.add(right, weight=1)
+
+        # --- LEFT (compact, sans couper les boutons) ---
         left.columnconfigure(0, weight=1)
 
-        right = ttk.Frame(self.root, padding=10)
-        right.grid(row=0, column=1, sticky="nsew")
-        right.columnconfigure(0, weight=1)
-        right.rowconfigure(2, weight=1)
+        # (Titre "Fichier" supprimé)
+        ttk.Button(left, text="Chargez un fichier audio", command=self._on_load).grid(row=1, column=0, sticky="ew", pady=(6, 0))
 
-        # --- Left: fichiers + presets
-        ttk.Label(left, text="Fichier").grid(row=0, column=0, sticky="w")
+        self.lbl_file = ttk.Label(left, text="Aucun fichier chargé.", wraplength=260, style="Panel.TLabel")
+        self.lbl_file.grid(row=2, column=0, sticky="w", pady=(6, 10))
 
-        btn_load = ttk.Button(left, text="Charger…", command=self._on_load)
-        btn_load.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        ttk.Separator(left).grid(row=3, column=0, sticky="ew", pady=8)
 
-        self.lbl_file = ttk.Label(left, text="Aucun fichier chargé.", wraplength=260)
-        self.lbl_file.grid(row=2, column=0, sticky="w", pady=(6, 12))
-
-        ttk.Separator(left).grid(row=3, column=0, sticky="ew", pady=10)
-
-        ttk.Label(left, text="Preset").grid(row=4, column=0, sticky="w")
-        row_preset = ttk.Frame(left)
+        # (Titre "Preset" supprimé)
+        row_preset = ttk.Frame(left, style="Panel.TFrame")
         row_preset.grid(row=5, column=0, sticky="ew", pady=(6, 0))
         row_preset.columnconfigure(0, weight=1)
         row_preset.columnconfigure(1, weight=1)
+        ttk.Button(row_preset, text="Charger…", command=self._on_load_preset).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(row_preset, text="Sauver…", command=self._on_save_preset).grid(row=0, column=1, sticky="ew")
 
-        ttk.Button(row_preset, text="Charger preset…", command=self._on_load_preset).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(row_preset, text="Sauver preset…", command=self._on_save_preset).grid(row=0, column=1, sticky="ew")
+        ttk.Separator(left).grid(row=6, column=0, sticky="ew", pady=8)
 
-        ttk.Separator(left).grid(row=6, column=0, sticky="ew", pady=10)
-
-        # --- Left: paramètres
-        ttk.Label(left, text="Paramètres").grid(row=7, column=0, sticky="w")
+        ttk.Label(left, text="Paramètres", style="Panel.TLabel").grid(row=7, column=0, sticky="w")
 
         self.var_seed = tk.IntVar(value=self.params.seed)
         self._add_spin(left, "Seed", self.var_seed, 0, 2_000_000_000, row=8)
@@ -108,65 +538,102 @@ class WarpocalypseApp:
         self.var_intensity = tk.DoubleVar(value=self.params.intensity)
         self._add_scale(left, "Intensité", self.var_intensity, 0.0, 2.0, row=16)
 
-        ttk.Separator(left).grid(row=17, column=0, sticky="ew", pady=10)
+        ttk.Separator(left).grid(row=17, column=0, sticky="ew", pady=8)
 
-        # --- Left: actions
-        ttk.Button(left, text="Randomize (nouvelle seed)", command=self._on_randomize_seed).grid(row=18, column=0, sticky="ew")
-        ttk.Button(left, text="Rendre (apply)", command=self._on_render).grid(row=19, column=0, sticky="ew", pady=(6, 0))
+        # Actions en bas à gauche (compact)
+        act = ttk.Frame(left, style="Panel.TFrame")
+        act.grid(row=18, column=0, sticky="ew")
+        act.columnconfigure(0, weight=1)
+        act.columnconfigure(1, weight=1)
 
-        row_act = ttk.Frame(left)
-        row_act.grid(row=20, column=0, sticky="ew", pady=(10, 0))
-        row_act.columnconfigure(0, weight=1)
-        row_act.columnconfigure(1, weight=1)
+        ttk.Button(act, text="Randomize", command=self._on_randomize_seed).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(act, text="Rendre", command=self._on_render).grid(row=0, column=1, sticky="ew")
 
-        ttk.Button(row_act, text="Preview", command=self._on_preview).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(row_act, text="Stop", command=self._on_stop).grid(row=0, column=1, sticky="ew")
+        act2 = ttk.Frame(left, style="Panel.TFrame")
+        act2.grid(row=19, column=0, sticky="ew", pady=(6, 0))
+        act2.columnconfigure(0, weight=1)
+        act2.columnconfigure(1, weight=1)
+        ttk.Button(act2, text="Preview", command=self._on_preview).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(act2, text="Stop", command=self._on_stop).grid(row=0, column=1, sticky="ew")
 
-        ttk.Button(left, text="Exporter WAV…", command=self._on_export).grid(row=21, column=0, sticky="ew", pady=(10, 0))
+        ttk.Button(left, text="Exporter WAV…", command=self._on_export).grid(row=20, column=0, sticky="ew", pady=(8, 0))
 
-        # --- Right: infos + waveform
-        self.lbl_info = ttk.Label(right, text="Chargez un fichier pour commencer.", wraplength=620)
+        # --- RIGHT (waveform + potards + infos) ---
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(1, weight=1)
+
+        # Texte "Chargez un fichier pour commencer." supprimé (label vide)
+        self.lbl_info = ttk.Label(right, text="", wraplength=740, style="Panel.TLabel")
         self.lbl_info.grid(row=0, column=0, sticky="w")
 
-        self.canvas = tk.Canvas(right, height=240, bg="black", highlightthickness=0)
-        self.canvas.grid(row=1, column=0, sticky="ew", pady=(10, 10))
+        # Waveform (hauteur divisée par 2 : 280 -> 140)
+        self.canvas = tk.Canvas(right, height=140, bg=self.theme.get("FIELD", "black"), highlightthickness=0)
+        self.canvas.grid(row=1, column=0, sticky="nsew", pady=(10, 10))
         self.canvas.bind("<Configure>", lambda _e: self._redraw_waveform())
 
-        self.txt_log = tk.Text(right, height=12, wrap="word")
-        self.txt_log.grid(row=2, column=0, sticky="nsew")
-        self.txt_log.configure(state="disabled")
+        # Potards (dans une barre dédiée, toujours visible)
+        knobs_bar = ttk.Frame(right, style="Panel.TFrame")
+        knobs_bar.grid(row=2, column=0, sticky="ew")
+        for c in range(4):
+            knobs_bar.columnconfigure(c, weight=1, uniform="knobs")
 
+        # Variables UI Warp (4 potards)
+        self.var_warp_amount = tk.DoubleVar(value=float(self.params.warp_amount))
+        self.var_warp_stretch_range = tk.DoubleVar(value=0.0)  # 0..1 -> 1±span
+        self.var_warp_pitch_range = tk.DoubleVar(value=0.0)    # 0..12 st
+        self.var_warp_prob = tk.DoubleVar(value=float((self.params.warp_stretch_prob + self.params.warp_pitch_prob) / 2.0))
+
+        self._push_warp_ranges_to_ui()
+
+        k_warp = RotaryKnob(knobs_bar, "Warp", self.var_warp_amount, 0.0, 1.0, step=0.01, theme=self.theme)
+        k_warp.grid(row=0, column=0, sticky="n", padx=8)
+        self._knob_widgets.append(k_warp)
+
+        k_stretch = RotaryKnob(knobs_bar, "Stretch", self.var_warp_stretch_range, 0.0, 1.0, step=0.01, theme=self.theme)
+        k_stretch.grid(row=0, column=1, sticky="n", padx=8)
+        self._knob_widgets.append(k_stretch)
+
+        k_pitch = RotaryKnob(knobs_bar, "Pitch", self.var_warp_pitch_range, 0.0, WARP_PITCH_RANGE_MAX_ST, step=0.25, theme=self.theme)
+        k_pitch.grid(row=0, column=2, sticky="n", padx=8)
+        self._knob_widgets.append(k_pitch)
+
+        k_prob = RotaryKnob(knobs_bar, "Prob", self.var_warp_prob, 0.0, 1.0, step=0.01, theme=self.theme)
+        k_prob.grid(row=0, column=3, sticky="n", padx=8)
+        self._knob_widgets.append(k_prob)
+
+        # Applique le thème courant
+        self._apply_theme(str(self.var_theme.get()))
+
+    # ---- helpers UI ----
     def _add_scale(self, parent: ttk.Frame, label: str, var: tk.DoubleVar, a: float, b: float, row: int) -> None:
-        frm = ttk.Frame(parent)
+        frm = ttk.Frame(parent, style="Panel.TFrame")
         frm.grid(row=row, column=0, sticky="ew", pady=3)
         frm.columnconfigure(1, weight=1)
-        ttk.Label(frm, text=label, width=14).grid(row=0, column=0, sticky="w")
+        ttk.Label(frm, text=label, width=14, style="Panel.TLabel").grid(row=0, column=0, sticky="w")
         s = ttk.Scale(frm, from_=a, to=b, variable=var, orient="horizontal")
         s.grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
     def _add_spin(self, parent: ttk.Frame, label: str, var: tk.IntVar, a: int, b: int, row: int) -> None:
-        frm = ttk.Frame(parent)
+        frm = ttk.Frame(parent, style="Panel.TFrame")
         frm.grid(row=row, column=0, sticky="ew", pady=3)
         frm.columnconfigure(1, weight=1)
-        ttk.Label(frm, text=label, width=14).grid(row=0, column=0, sticky="w")
+        ttk.Label(frm, text=label, width=14, style="Panel.TLabel").grid(row=0, column=0, sticky="w")
         sp = ttk.Spinbox(frm, from_=a, to=b, textvariable=var, increment=1, width=10)
         sp.grid(row=0, column=1, sticky="w", padx=(6, 0))
 
     def _add_spin_float(self, parent: ttk.Frame, label: str, var: tk.DoubleVar, a: float, b: float, row: int) -> None:
-        frm = ttk.Frame(parent)
+        frm = ttk.Frame(parent, style="Panel.TFrame")
         frm.grid(row=row, column=0, sticky="ew", pady=3)
         frm.columnconfigure(1, weight=1)
-        ttk.Label(frm, text=label, width=14).grid(row=0, column=0, sticky="w")
+        ttk.Label(frm, text=label, width=14, style="Panel.TLabel").grid(row=0, column=0, sticky="w")
         sp = ttk.Spinbox(frm, from_=a, to=b, textvariable=var, increment=0.5, width=10)
         sp.grid(row=0, column=1, sticky="w", padx=(6, 0))
 
     # ---------------- Logic ----------------
 
     def _log(self, msg: str) -> None:
-        self.txt_log.configure(state="normal")
-        self.txt_log.insert("end", msg + "\n")
-        self.txt_log.see("end")
-        self.txt_log.configure(state="disabled")
+        # Journal supprimé (volontaire).
+        pass
 
     def _sync_params_from_ui(self) -> None:
         self.params.seed = int(self.var_seed.get())
@@ -179,6 +646,28 @@ class WarpocalypseApp:
         self.params.gain_db_max = float(self.var_gain_max.get())
         self.params.intensity = float(self.var_intensity.get())
 
+        # --- Warp (potards à droite) ---
+        try:
+            self.params.warp_amount = float(self.var_warp_amount.get())
+
+            r = float(self.var_warp_stretch_range.get())
+            r = float(np.clip(r, 0.0, 1.0))
+            span = r * WARP_STRETCH_SPAN_MAX
+            self.params.warp_stretch_min = float(max(0.05, 1.0 - span))
+            self.params.warp_stretch_max = float(max(self.params.warp_stretch_min, 1.0 + span))
+
+            pr = float(self.var_warp_pitch_range.get())
+            pr = float(np.clip(pr, 0.0, WARP_PITCH_RANGE_MAX_ST))
+            self.params.warp_pitch_min_st = float(-pr)
+            self.params.warp_pitch_max_st = float(pr)
+
+            p = float(self.var_warp_prob.get())
+            p = float(np.clip(p, 0.0, 1.0))
+            self.params.warp_stretch_prob = float(p)
+            self.params.warp_pitch_prob = float(p)
+        except Exception:
+            pass
+
     def _push_params_to_ui(self) -> None:
         self.var_seed.set(int(self.params.seed))
         self.var_grain_min.set(int(self.params.grain_ms_min))
@@ -189,6 +678,33 @@ class WarpocalypseApp:
         self.var_gain_min.set(float(self.params.gain_db_min))
         self.var_gain_max.set(float(self.params.gain_db_max))
         self.var_intensity.set(float(self.params.intensity))
+
+        try:
+            self.var_warp_amount.set(float(self.params.warp_amount))
+            self.var_warp_prob.set(float((self.params.warp_stretch_prob + self.params.warp_pitch_prob) / 2.0))
+            self._push_warp_ranges_to_ui()
+        except Exception:
+            pass
+
+    def _push_warp_ranges_to_ui(self) -> None:
+        # Stretch
+        try:
+            mn = float(getattr(self.params, "warp_stretch_min", 1.0))
+            mx = float(getattr(self.params, "warp_stretch_max", 1.0))
+            span = max(0.0, max(1.0 - mn, mx - 1.0))
+            r = 0.0 if WARP_STRETCH_SPAN_MAX <= 0 else (span / WARP_STRETCH_SPAN_MAX)
+            self.var_warp_stretch_range.set(float(np.clip(r, 0.0, 1.0)))
+        except Exception:
+            pass
+
+        # Pitch
+        try:
+            pmin = float(getattr(self.params, "warp_pitch_min_st", 0.0))
+            pmax = float(getattr(self.params, "warp_pitch_max_st", 0.0))
+            pr = max(abs(pmin), abs(pmax))
+            self.var_warp_pitch_range.set(float(np.clip(pr, 0.0, WARP_PITCH_RANGE_MAX_ST)))
+        except Exception:
+            pass
 
     def _on_load(self) -> None:
         path = filedialog.askopenfilename(
@@ -222,8 +738,6 @@ class WarpocalypseApp:
         self._redraw_waveform()
 
     def _on_randomize_seed(self) -> None:
-        # nouvelle seed (mais affichée, donc reproductible)
-        import random
         new_seed = random.randint(0, 2_000_000_000)
         self.var_seed.set(new_seed)
         self._log(f"Seed -> {new_seed}")
@@ -234,6 +748,14 @@ class WarpocalypseApp:
             return
 
         self._sync_params_from_ui()
+
+        if float(np.clip(getattr(self.params, "warp_amount", 0.0), 0.0, 1.0)) > 0.0:
+            try:
+                from warp_engine import ensure_warp_deps_available
+                ensure_warp_deps_available()
+            except Exception as e:
+                messagebox.showerror("Warp", f"Warp activé, mais dépendances manquantes ou invalides.\n\nDétail : {e}")
+                return
 
         try:
             res = render(self.src_audio, self.src_sr, self.params)
@@ -283,7 +805,6 @@ class WarpocalypseApp:
         if self.out_audio is not None and self.out_sr is not None:
             return self.out_audio, self.out_sr
 
-        # Si pas rendu, on lit l'original
         return self.src_audio, self.src_sr
 
     def _on_export(self) -> None:
@@ -362,7 +883,6 @@ class WarpocalypseApp:
         w = max(1, self.canvas.winfo_width())
         h = max(1, self.canvas.winfo_height())
 
-        # downsample à la largeur du canvas
         n = len(audio)
         step = max(1, n // w)
         reduced = audio[::step]
@@ -370,12 +890,11 @@ class WarpocalypseApp:
         mid = h // 2
         scale = (h * 0.45)
 
-        # trace en vert pâle (mais sans dépendances; Tkinter gère la couleur)
         x_prev = 0
         y_prev = mid
         for x, v in enumerate(reduced[:w]):
             y = int(mid - float(v) * scale)
-            self.canvas.create_line(x_prev, y_prev, x, y, fill="#9BE7A2")
+            self.canvas.create_line(x_prev, y_prev, x, y, fill=self._col_accent)
             x_prev, y_prev = x, y
 
         dur = n / sr
@@ -384,4 +903,4 @@ class WarpocalypseApp:
     def _draw_center_text(self, text: str) -> None:
         w = self.canvas.winfo_width()
         h = self.canvas.winfo_height()
-        self.canvas.create_text(w//2, h//2, fill="white", text=text)
+        self.canvas.create_text(w // 2, h // 2, fill="white", text=text)

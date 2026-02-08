@@ -2,3 +2,6 @@ numpy
 soundfile
 sounddevice
 pydub
+librosa
+scipy
+numba

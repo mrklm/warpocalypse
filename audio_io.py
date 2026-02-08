@@ -1,42 +1,36 @@
-# audio_io.py
 from __future__ import annotations
 
 import os
 import platform
+import shutil
 
 import numpy as np
 import soundfile as sf
-from pydub import AudioSegment
 
 
-def get_ffmpeg_path() -> str:
-    """
-    Retourne le chemin absolu vers ffmpeg embarqué dans tools/.
-    """
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    tools_dir = os.path.join(base_dir, "tools")
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+TOOLS_DIR = os.path.join(PROJECT_DIR, "tools")
 
-    system = platform.system().lower()
-    machine = platform.machine().lower()
+# Détection simple de l'arch Linux (x86_64, aarch64, etc.)
+arch = platform.machine().lower()
+if arch == "amd64":
+    arch = "x86_64"
 
-    if system == "darwin":
-        arch = "macos-arm64" if "arm" in machine else "macos-x86_64"
-        ffmpeg = os.path.join(tools_dir, arch, "ffmpeg")
-    elif system == "linux":
-        ffmpeg = os.path.join(tools_dir, "linux-x86_64", "ffmpeg")
-    elif system == "windows":
-        ffmpeg = os.path.join(tools_dir, "windows-x86_64", "ffmpeg.exe")
-    else:
-        raise RuntimeError("Plateforme non supportée.")
+# Candidats (priorité au binaire fourni)
+candidates: list[str] = []
+candidates.append(os.path.join(TOOLS_DIR, "linux-x86_64", "ffmpeg"))
+candidates.append(os.path.join(TOOLS_DIR, f"linux-{arch}", "ffmpeg"))
+candidates.append(os.path.join(TOOLS_DIR, "ffmpeg"))
 
-    if not os.path.isfile(ffmpeg):
-        raise FileNotFoundError(f"ffmpeg introuvable : {ffmpeg}")
+ffmpeg_path: str | None = None
+for c in candidates:
+    if os.path.isfile(c) and os.access(c, os.X_OK):
+        ffmpeg_path = c
+        break
 
-    return ffmpeg
-
-
-# Force pydub à utiliser le ffmpeg embarqué
-AudioSegment.converter = get_ffmpeg_path()
+# Fallback : ffmpeg dans le PATH système
+if not ffmpeg_path:
+    ffmpeg_path = shutil.which("ffmpeg")
 
 
 def load_audio(path: str) -> tuple[np.ndarray, int]:
@@ -53,6 +47,16 @@ def load_audio(path: str) -> tuple[np.ndarray, int]:
         return audio_mono.astype(np.float32), int(sr)
 
     # Fallback pydub (mp3/flac/ogg/...)
+    if not ffmpeg_path:
+        raise RuntimeError("ffmpeg introuvable : impossible de charger ce format audio.")
+
+    # Ajouter ffmpeg au PATH AVANT d'importer pydub (évite le warning pydub au chargement)
+    ffmpeg_dir = os.path.dirname(ffmpeg_path)
+    os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+
+    from pydub import AudioSegment  # import tardif volontaire
+    AudioSegment.converter = ffmpeg_path
+
     seg = AudioSegment.from_file(path)
     sr = int(seg.frame_rate)
     samples = np.array(seg.get_array_of_samples())

@@ -4,7 +4,6 @@ from dataclasses import dataclass, asdict
 import json
 from typing import Any
 
-
 @dataclass
 class Params:
     # Découpage (en ms)
@@ -16,13 +15,32 @@ class Params:
     reverse_prob: float = 0.15            # 0..1
     gain_db_min: float = -6.0
     gain_db_max: float = 3.0
-    keep_original_ratio: float = 0.25     # 0..1 (portion de segments gardés à leur place)
+    keep_original_ratio: float = 0.25     # 0..1
 
     # Intensité globale (multiplie l'effet, tout en restant borné)
-    intensity: float = 1.00               # 0..2 (par ex)
+    intensity: float = 1.00               # 0..2
 
     # Seed (reproductibilité)
     seed: int = 123456
+
+    # ---------------- Warp (time-stretch / pitch) ----------------
+    # Master
+    warp_amount: float = 0.00             # 0..1
+
+    # Time-stretch bounds
+    warp_stretch_min: float = 0.85
+    warp_stretch_max: float = 1.25
+
+    # Pitch bounds (semitones)
+    warp_pitch_min_st: float = -3.0
+    warp_pitch_max_st: float = 3.0
+
+    # Probabilités par grain
+    warp_stretch_prob: float = 0.60       # 0..1
+    warp_pitch_prob: float = 0.60         # 0..1
+
+    # Longueur du grain conservée (recommandé)
+    warp_preserve_length: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -34,6 +52,7 @@ class Params:
             if hasattr(p, k):
                 setattr(p, k, v)
         return p
+
 
 
 def save_preset(path: str, params: Params) -> None:

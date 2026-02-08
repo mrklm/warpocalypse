@@ -5,18 +5,22 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 
 ---
 
-## [Unreleased]
-### À venir
-- Amélioration visuelle des potards (anti-aliasing / style)
-- Affichage optionnel d’un fond graphique dans la forme d’onde
-- Menu “À propos”
-- Documentation détaillée des paramètres
-- Stabilisation finale avant v1.0
+## [1.0.0] 2026/02/08
+
+### Ajouté
+
+- Correction du warp : garde-fous sur la taille des grains + n_fft adaptatif
+
+### Modifié
+
+- Stabilité améliorée sur fichiers courts, suppression des warnings DSP
 
 ---
 
-## [0.9.0] — en cours
+## [0.9.0] 2026/02/08
+
 ### Ajouté
+
 - Affichage de la version dans la fenêtre principale
 - Centralisation du versionnage (`APP_NAME`, `APP_VERSION`)
 - UI épurée :
@@ -26,11 +30,13 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 - Système de potards rotatifs (Warp / Stretch / Pitch / Prob)
 
 ### Modifié
+
 - Flux principal clarifié : charger → écouter → rendre → exporter
 - Paramètres Warp regroupés et synchronisés avec l’UI
 - Gestion des thèmes améliorée (cohérence fond / accents)
 
 ### Corrigé
+
 - Import prématuré de pydub supprimé (warning ffmpeg au lancement)
 - Détection et usage de ffmpeg fiabilisés
 - Séparation claire des responsabilités :
@@ -41,8 +47,10 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 
 ---
 
-## [0.8.0]
+## [0.8.0] 2026/02/07
+
 ### Ajouté
+
 - Moteur Warp (time-stretch et pitch aléatoires)
 - Potard d’intensité globale
 - Seed reproductible
@@ -50,14 +58,17 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 - Export WAV
 
 ### Modifié
+
 - Refonte du moteur de rendu
 - Normalisation du flux mono
 - Meilleure gestion des erreurs utilisateur
 
 ---
 
-## [0.7.0]
+## [0.7.0] 2026/02/06
+
 ### Ajouté
+
 - Chargement audio multi-formats (WAV / MP3 / FLAC / OGG / AIFF / M4A)
 - Affichage de la forme d’onde
 - Presets (sauvegarde / chargement JSON)
@@ -65,7 +76,9 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 ---
 
 ## [0.6.0] et antérieur
+
 ### Ajouté
+
 - Prototype initial
 - Moteur de grains
 - Shuffle, reverse probabiliste, gain aléatoire

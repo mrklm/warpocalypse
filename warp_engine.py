@@ -30,10 +30,24 @@ class WarpDefaults:
     preserve_length: bool = True
 
     # Sécurité: en dessous de ce nombre d'échantillons, pas de warp
-    min_samples: int = 256
+    min_samples: int = 2048
 
 
 # ----------------------------- public API ---------------------------------
+
+def _choose_n_fft(n_samples: int, n_fft_max: int = 2048, n_fft_min: int = 256) -> int:
+    """Choisit un n_fft (puissance de 2) adapté à la longueur du signal."""
+    if n_samples <= 0:
+        return 0
+    # n_fft doit être <= n_samples pour éviter les warnings/librosa
+    n_fft = min(n_fft_max, n_samples)
+    # puissance de 2 <= n_fft
+    p = 1
+    while (p * 2) <= n_fft:
+        p *= 2
+    if p < n_fft_min:
+        return 0
+    return p
 
 def warp_grain(
     grain: np.ndarray,
@@ -74,7 +88,8 @@ def warp_grain(
         rate = _sample_stretch_rate(rng, d, intensity)
         # librosa.effects.time_stretch attend rate > 0
         try:
-            y = librosa.effects.time_stretch(y, rate=rate).astype(np.float32)
+            y = librosa.effects.time_stretch(y, rate=rate, n_fft=n_fft, hop_length=hop_length).astype(np.float32)
+
         except Exception:
             # En cas d'échec numérique, on laisse le grain inchangé (fail-soft)
             y = grain
@@ -83,7 +98,8 @@ def warp_grain(
     if rng.random() < _prob_scaled(d.pitch_prob, d.warp_amount, intensity):
         n_steps = _sample_pitch_steps(rng, d, intensity)
         try:
-            y = librosa.effects.pitch_shift(y, sr=sr, n_steps=n_steps).astype(np.float32)
+            y = librosa.effects.pitch_shift(y, sr=sr, n_steps=n_steps, n_fft=n_fft, hop_length=hop_length).astype(np.float32)
+
         except Exception:
             y = y  # fail-soft
 
@@ -92,6 +108,13 @@ def warp_grain(
         y = _fit_length(y, target_len=len(grain))
 
     return np.clip(y, -1.0, 1.0).astype(np.float32)
+
+    # Garde-fou FFT : choisir une taille adaptée au grain
+    n_fft = _choose_n_fft(len(grain), n_fft_max=2048, n_fft_min=256)
+    if n_fft == 0:
+        return grain
+    hop_length = max(1, n_fft // 4)
+
 
 
 def warp_segments(

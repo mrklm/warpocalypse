@@ -547,7 +547,9 @@ class WarpocalypseApp:
         act.columnconfigure(1, weight=1)
 
         ttk.Button(act, text="Randomize", command=self._on_randomize_seed).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(act, text="Rendre", command=self._on_render).grid(row=0, column=1, sticky="ew")
+        self.btn_render = ttk.Button(act, text="Rendre", command=self._on_render)
+        self.btn_render.grid(row=0, column=1, sticky="ew")
+
 
         act2 = ttk.Frame(left, style="Panel.TFrame")
         act2.grid(row=19, column=0, sticky="ew", pady=(6, 0))
@@ -747,31 +749,82 @@ class WarpocalypseApp:
             messagebox.showinfo("Information", "Veuillez charger un fichier audio avant de rendre.")
             return
 
+        # Évite les doubles clics
+        try:
+            if getattr(self, "_render_busy", False):
+                return
+        except Exception:
+            pass
+
+        self._render_busy = True
+
+        # UI: désactiver le bouton pendant le rendu
+        try:
+            self.btn_render.configure(text="Rendu…", state="disabled")
+        except Exception:
+            pass
+
+        # Récupère les paramètres dans le thread UI (safe)
         self._sync_params_from_ui()
 
+        # Si Warp activé : vérifier dépendances AVANT de lancer le thread (safe pour messagebox)
         if float(np.clip(getattr(self.params, "warp_amount", 0.0), 0.0, 1.0)) > 0.0:
             try:
                 from warp_engine import ensure_warp_deps_available
                 ensure_warp_deps_available()
             except Exception as e:
+                self._render_busy = False
+                try:
+                    self.btn_render.configure(text="Rendre", state="normal")
+                except Exception:
+                    pass
                 messagebox.showerror("Warp", f"Warp activé, mais dépendances manquantes ou invalides.\n\nDétail : {e}")
                 return
 
+        # Worker (thread)
+        def _worker(audio: np.ndarray, sr: int, params: Params) -> None:
+            try:
+                res = render(audio, sr, params)
+                # Retour UI thread
+                self.root.after(0, lambda: self._on_render_done(res))
+            except Exception as e:
+                self.root.after(0, lambda: self._on_render_failed(e))
+
+        threading.Thread(
+            target=_worker,
+            args=(self.src_audio, self.src_sr, self.params),
+            daemon=True,
+        ).start()
+
+    def _on_render_done(self, res) -> None:
+        # res vient de engine.render()
         try:
-            res = render(self.src_audio, self.src_sr, self.params)
-        except Exception as e:
+            self.out_audio = res.audio
+            self.out_sr = self.src_sr
+            self.out_segments = res.segments_count
+
+            self.lbl_info.configure(
+                text=f"Rendu prêt — segments: {self.out_segments} — durée: {len(self.out_audio)/self.out_sr:.2f} s — seed: {self.params.seed}"
+            )
+            self._redraw_waveform()
+        finally:
+            self._render_busy = False
+            try:
+                self.btn_render.configure(text="Rendre", state="normal")
+            except Exception:
+                pass
+
+
+    def _on_render_failed(self, e: Exception) -> None:
+        try:
             messagebox.showerror("Erreur", f"Le rendu a échoué.\n\nDétail : {e}")
-            return
+        finally:
+            self._render_busy = False
+            try:
+                self.btn_render.configure(text="Rendre", state="normal")
+            except Exception:
+                pass
 
-        self.out_audio = res.audio
-        self.out_sr = self.src_sr
-        self.out_segments = res.segments_count
-
-        self.lbl_info.configure(
-            text=f"Rendu prêt — segments: {self.out_segments} — durée: {len(self.out_audio)/self.out_sr:.2f} s — seed: {self.params.seed}"
-        )
-        self._log(f"Rendu OK: {self.out_segments} segments, seed={self.params.seed}")
-        self._redraw_waveform()
 
     def _on_preview(self) -> None:
         audio, sr = self._get_preview_buffer()

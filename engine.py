@@ -116,12 +116,15 @@ def slice_into_random_grains(audio: np.ndarray, rng: np.random.Generator, min_s:
     max_s = max(min_s, max_s)
 
     while i < n:
-        # Dernier segment: on prend le reste si trop court
+        # Dernier segment: si le reste est trop court, on le fusionne au segment précédent
         remaining = n - i
         if remaining <= min_s:
-            seg = audio[i:n].copy()
-            segments.append(seg)
+            if segments:
+                segments[-1] = np.concatenate([segments[-1], audio[i:n]]).astype(np.float32, copy=False)
+            else:
+                segments.append(audio[i:n].copy())
             break
+
 
         size = int(rng.integers(min_s, min(max_s, remaining) + 1))
         seg = audio[i:i+size].copy()

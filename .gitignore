@@ -1,0 +1,36 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# --- Tools / binaries ---
+tools/
+
+# --- Environnements virtuels ---
+.venv/
+venv/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Audio temporaires / exports ---
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.aiff
+*.aif
+
+# --- Logs ---
+*.log
+
+# --- IDE ---
+.vscode/
+.idea/
+
+# --- Notes ---
+
+*.odt
+*.pdf

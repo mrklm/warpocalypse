@@ -14,6 +14,19 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
  - synchroniser l’arrêt via un threading.Event
 
 ---
+## [1.1.0] 2026/02/08
+
+### Ajouté
+
+- Ajout d’une image splash dans l’aide, 
+- centrage du texte AIDE.md
+- intégration de Pillow pour le redimensionnement
+
+### Modifié
+
+- corrections de bugs de syntaxe
+
+---
 
 ## [1.0.0] 2026/02/08
 

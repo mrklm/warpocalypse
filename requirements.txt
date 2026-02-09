@@ -5,3 +5,4 @@ pydub
 librosa
 scipy
 numba
+Pillow>=10.0

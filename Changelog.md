@@ -5,6 +5,16 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 
 ---
 
+## [1.0.1] 2026/02/09
+
+### Modifié
+
+ - ne plus appeler sd.stop() depuis le thread UI
+ - déléguer l’arrêt de la lecture au même thread que celui qui a lancé sd.play()
+ - synchroniser l’arrêt via un threading.Event
+
+---
+
 ## [1.0.0] 2026/02/08
 
 ### Ajouté

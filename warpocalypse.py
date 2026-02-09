@@ -1,6 +1,7 @@
 # warpocalypse.py
 from ui import WarpocalypseApp
 
+
 def main() -> None:
     app = WarpocalypseApp()
     app.run()

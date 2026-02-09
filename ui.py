@@ -373,6 +373,9 @@ class WarpocalypseApp:
 
         self._play_lock = threading.Lock()
         self._is_playing = False
+        # Anti-segfault PortAudio: arrêt demandé via Event, stop exécuté dans le thread audio
+        self._stop_request = threading.Event()
+        self._play_thread: threading.Thread | None = None
 
         self._build_ui()
 
@@ -831,24 +834,61 @@ class WarpocalypseApp:
         if audio is None or sr is None:
             return
 
-        def _play() -> None:
-            with self._play_lock:
-                self._is_playing = True
+        # Empêche double lecture
+        with self._play_lock:
+            if self._is_playing:
+                return
+            self._is_playing = True
+
+        self._stop_request.clear()
+
+        def _play_worker(buf: np.ndarray, samplerate: int) -> None:
             try:
-                sd.stop()
-                sd.play(audio, sr, blocking=True)
+                # Démarrer la lecture non bloquante
+                sd.play(buf, samplerate, blocking=False)
+
+                # Boucle jusqu'à arrêt demandé OU fin naturelle
+                while True:
+                    if self._stop_request.is_set():
+                        break
+
+                    try:
+                        stream = sd.get_stream()
+                        if stream is None:
+                            break
+                        if hasattr(stream, "active") and not stream.active:
+                            break
+                    except Exception:
+                        break
+
+                    sd.sleep(30)
+
+                # IMPORTANT : stop exécuté dans le MÊME thread que play()
+                try:
+                    sd.stop()
+                except Exception:
+                    pass
+
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("Erreur", f"Lecture audio impossible.\n\nDétail : {e}"))
             finally:
                 with self._play_lock:
                     self._is_playing = False
 
-        threading.Thread(target=_play, daemon=True).start()
+        self._play_thread = threading.Thread(
+            target=_play_worker,
+            args=(audio, sr),
+            daemon=True,
+        )
+        self._play_thread.start()
         self._log("Preview: lecture lancée.")
 
+
     def _on_stop(self) -> None:
-        sd.stop()
-        self._log("Stop: lecture arrêtée.")
+        # Ne pas appeler sd.stop() depuis Tkinter (segfault observé)
+        self._stop_request.set()
+        self._log("Stop: arrêt demandé.")
+
 
     def _get_preview_buffer(self) -> tuple[np.ndarray | None, int | None]:
         if self.src_audio is None or self.src_sr is None:

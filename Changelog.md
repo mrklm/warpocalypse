@@ -14,6 +14,16 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
  - synchroniser l’arrêt via un threading.Event
 
 ---
+
+## [1.1.1] 2026/02/09
+
+### Ajouté
+
+ - Mode Loop
+ - license GNU
+
+--- 
+
 ## [1.1.0] 2026/02/08
 
 ### Ajouté

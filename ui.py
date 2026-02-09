@@ -6,12 +6,6 @@ import math
 import threading
 import tkinter as tk
 import random
-from tkinter import ttk, filedialog, messagebox
-from tkinter import font as tkfont
-
-import numpy as np
-import sounddevice as sd
-
 
 # --- Pillow (images UI) ---
 try:
@@ -20,12 +14,18 @@ except Exception:
     Image = None
     ImageTk = None
 
+from tkinter import ttk, filedialog, messagebox
+from tkinter import font as tkfont
+
+import numpy as np
+import sounddevice as sd
+
 from presets import Params, save_preset, load_preset
 from audio_io import load_audio, export_wav
 from engine import render
 
 APP_NAME = "Warpocalypse"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 
 APP_TITLE = APP_NAME
 DEFAULT_GEOMETRY = "1060x740"
@@ -389,18 +389,20 @@ class WarpocalypseApp:
         # --- AIDE overlay (affiché au démarrage) ---
         self.var_show_help = tk.BooleanVar(value=True)
         self._help_text_widget: tk.Text | None = None
-
-
-        # Contenu AIDE.md (rendu via _render_help_overlay)
         self._help_content: str | None = None
 
-        # Splash image (warpocalypse.png) : affichée en haut de l'aide et aussi sous l'aide quand elle est masquée
+        # Splash image (warpocalypse.png)
         self._splash_label: tk.Label | None = None
         self._splash_image: object | None = None
+
+        # Mode Loop (toggle)
+        self.var_loop_mode = tk.BooleanVar(value=False)
+        self.chk_loop_mode: ttk.Checkbutton | None = None
+
         self._build_ui()
         self._load_splash_image()
-        self._render_help_overlay()
         self._apply_splash_layer()
+        self._render_help_overlay()
         self._update_help_visibility()
     def _choose_random_theme(self) -> None:
         names = list(THEMES.keys())
@@ -438,6 +440,13 @@ class WarpocalypseApp:
 
         s.configure("TLabel", background=bg, foreground=fg)
         s.configure("Panel.TLabel", background=panel, foreground=fg)
+
+        s.configure("Panel.TCheckbutton", background=panel, foreground=fg)
+        s.map(
+            "Panel.TCheckbutton",
+            background=[("active", panel)],
+            foreground=[("disabled", "#777777")],
+        )
 
         s.configure("TButton", background=panel, foreground=fg)
         s.map("TButton",
@@ -587,9 +596,17 @@ class WarpocalypseApp:
         act2.columnconfigure(0, weight=1)
         act2.columnconfigure(1, weight=1)
         ttk.Button(act2, text="Preview", command=self._on_preview).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(act2, text="Stop", command=self._on_stop).grid(row=0, column=1, sticky="ew")
+        ttk.Button(act2, text="Stop", command=self._on_stop).grid(row=0, column=1, sticky="ew")        # Mode Loop (case à cocher) - même largeur que Export
+        self.chk_loop_mode = ttk.Checkbutton(
+            left,
+            text="Mode Loop",
+            variable=self.var_loop_mode,
+            command=self._on_loop_mode_changed,
+            style="Panel.TCheckbutton",
+        )
+        self.chk_loop_mode.grid(row=20, column=0, sticky="ew", pady=(8, 0))
 
-        ttk.Button(left, text="Exporter WAV…", command=self._on_export).grid(row=20, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(left, text="Exporter WAV…", command=self._on_export).grid(row=21, column=0, sticky="ew", pady=(8, 0))
 
         # --- RIGHT (waveform + potards + infos) ---
         right.columnconfigure(0, weight=1)
@@ -631,6 +648,15 @@ class WarpocalypseApp:
         self.canvas.grid(row=0, column=0, sticky="nsew")
         self.canvas.bind("<Configure>", lambda _e: self._redraw_waveform())
 
+        # Splash (warpocalypse.png) : couche au-dessus de la waveform
+        self._splash_label = tk.Label(
+            wave_container,
+            bg=self.theme.get("FIELD", "black"),
+            borderwidth=0,
+            highlightthickness=0,
+        )
+        self._splash_label.grid(row=0, column=0, sticky="nsew")
+
         # Overlay AIDE (fond noir, texte blanc, police 14)
         self._help_text_widget = tk.Text(
             wave_container,
@@ -647,9 +673,9 @@ class WarpocalypseApp:
         self._help_text_widget.configure(font=help_font)
         self._help_text_widget.configure(state="disabled")
 
-        # Charger assets/AIDE.md
-        help_path = os.path.join(os.path.dirname(__file__), "assets", "AIDE.md")
-        content = None
+        # Charger assets/AIDE.md (lecture ici, rendu via _render_help_overlay)
+        help_path = os.path.join(self._assets_dir(), "AIDE.md")
+        content: str | None = None
         if os.path.isfile(help_path):
             try:
                 with open(help_path, "r", encoding="utf-8") as f:
@@ -657,17 +683,15 @@ class WarpocalypseApp:
             except Exception:
                 content = None
 
-        if not content:
-            content = (
-                "AIDE.md introuvable.\n\n"
-                "Créer le fichier : assets/AIDE.md\n"
-                "Puis relancer l'application.\n"
-            )
-
-        # Stocker le contenu pour l'affichage via _render_help_overlay()
         self._help_content = content
-        self._render_help_overlay()
 
+
+
+        # Rendu initial de l'aide (texte centré + image si dispo)
+        try:
+            self._render_help_overlay()
+        except Exception:
+            pass
         # Potards (dans une barre dédiée, toujours visible)
         knobs_bar = ttk.Frame(right, style="Panel.TFrame")
         knobs_bar.grid(row=2, column=0, sticky="ew")
@@ -703,8 +727,6 @@ class WarpocalypseApp:
         # Afficher l'aide au démarrage (checkbox cochée par défaut)
         self._update_help_visibility()
 
-    # ---------------- Splash + Help overlay ----------------
-
     def _assets_dir(self) -> str:
         return os.path.join(os.path.dirname(__file__), "assets")
 
@@ -720,27 +742,27 @@ class WarpocalypseApp:
 
         try:
             img = Image.open(splash_path).convert("RGBA")
-
-            # Limite la largeur (sinon ça déborde dans l'aide)
-            img = img.resize((160, 110), Image.LANCZOS)
-
-
+            max_w = 640
+            w, h = img.size
+            if w > max_w and w > 0:
+                ratio = max_w / float(w)
+                img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
             self._splash_image = ImageTk.PhotoImage(img)
         except Exception:
             self._splash_image = None
 
     def _apply_splash_layer(self) -> None:
-        """Applique l'image splash au Label (sous l'aide)."""
+        """Applique la splash au label (si présent)."""
         if self._splash_label is None or self._splash_image is None:
             return
         try:
             self._splash_label.configure(image=self._splash_image)
-            self._splash_label.image = self._splash_image  # garder référence
+            self._splash_label.image = self._splash_image
         except Exception:
             pass
 
     def _render_help_overlay(self) -> None:
-        """Rend l'aide : image en haut (si dispo) + texte centré."""
+        """Met à jour le contenu de l'aide (image + texte centré)."""
         if self._help_text_widget is None:
             return
 
@@ -750,29 +772,23 @@ class WarpocalypseApp:
                 "AIDE.md introuvable.\n\n"
                 "Créer le fichier : assets/AIDE.md\n"
                 "Puis relancer l'application.\n"
-)
+            )
 
         try:
             self._help_text_widget.configure(state="normal")
             self._help_text_widget.delete("1.0", "end")
 
-            # Image en haut de l'aide (si disponible)
             if self._splash_image is not None:
                 try:
                     self._help_text_widget.image_create("end", image=self._splash_image)
-                    # garder une référence côté widget (anti-GC)
-                    self._help_text_widget._header_image = self._splash_image  # type: ignore[attr-defined]
+                    self._help_text_widget._header_image = self._splash_image
                     self._help_text_widget.insert("end", "\n\n")
-
                 except Exception:
                     pass
 
             self._help_text_widget.insert("end", content)
-
-            # Centrage global
             self._help_text_widget.tag_configure("center", justify="center")
             self._help_text_widget.tag_add("center", "1.0", "end")
-
             self._help_text_widget.configure(state="disabled")
         except Exception:
             try:
@@ -780,31 +796,52 @@ class WarpocalypseApp:
             except Exception:
                 pass
 
-
-
     def _update_help_visibility(self) -> None:
+        """Gère les couches : aide / splash / waveform.
+
+        - Si l'aide est cochée : l'overlay d'aide passe au-dessus.
+        - Si l'aide est décochée :
+            - s'il n'y a PAS d'audio chargé : on montre la splash (warpocalypse.png)
+            - s'il y a un audio : on montre la waveform (la splash passe en dessous)
+        """
         if self._help_text_widget is None:
             return
-        if bool(self.var_show_help.get()):
+
+        show_help = bool(self.var_show_help.get())
+
+        if show_help:
             try:
                 self._help_text_widget.lift()
             except Exception:
                 pass
-            # L'aide doit rester au-dessus de la splash
-            
-        else:
+            return
+
+        # Aide masquée
+        try:
+            self._help_text_widget.lower()
+        except Exception:
+            pass
+
+        has_audio = (self.src_audio is not None) or (self.out_audio is not None)
+
+        # Quand un audio est chargé, la waveform doit être visible (splash en dessous).
+        if self._splash_label is not None:
             try:
-                self._help_text_widget.lower()
+                if has_audio:
+                    self._splash_label.lower()
+                else:
+                    self._splash_label.lift()
             except Exception:
                 pass
-            # Quand l'aide est masquée, remettre la splash au-dessus de la waveform
-            if self._splash_label is not None:
-                try:
-                    self._splash_label.lift()
-                except Exception:
-                    pass
+    # ---------------- Mode Loop ----------------
+
+    def _on_loop_mode_changed(self) -> None:
+        """Callback du mode loop (case à cocher)."""
+        # Pour l'instant: toggle uniquement (la sélection sur waveform viendra ensuite)
+        self._log(f"Mode Loop -> {bool(self.var_loop_mode.get())}")
 
     # ---- helpers UI ----
+
     def _add_scale(self, parent: ttk.Frame, label: str, var: tk.DoubleVar, a: float, b: float, row: int) -> None:
         frm = ttk.Frame(parent, style="Panel.TFrame")
         frm.grid(row=row, column=0, sticky="ew", pady=3)
@@ -936,6 +973,17 @@ class WarpocalypseApp:
         self.lbl_info.configure(text=f"Chargé : {os.path.basename(path)} — {sr} Hz — {len(audio)/sr:.2f} s (mono)")
         self._log(f"Chargement OK: {path}")
         self._redraw_waveform()
+        # Quand un son est chargé : afficher la forme d'onde (masquer l'aide)
+        try:
+            self.var_show_help.set(False)
+            self._update_help_visibility()
+            try:
+                self._redraw_waveform()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
 
     def _on_randomize_seed(self) -> None:
         new_seed = random.randint(0, 2_000_000_000)

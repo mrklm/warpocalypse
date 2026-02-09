@@ -3,7 +3,7 @@
 Warpocalypse est un **outil audio expérimental** de transformation et de re-composition sonore.  
 Il permet de charger un fichier audio, de le fragmenter, le déformer, le re-synthétiser et d’exporter le résultat en WAV.
 
-L’objectif n’est pas la fidélité, mais **l’accident contrôlé**.
+L’objectif est **l’accident contrôlé**.
 
 ---
 
@@ -24,21 +24,21 @@ L’objectif n’est pas la fidélité, mais **l’accident contrôlé**.
   - Pitch-shift aléatoire
   - Probabilité de warp
 - Seed reproductible (même seed → même résultat)
+- Mode loop
 - Pré-écoute audio
 - Export WAV
 - Thèmes visuels multiples (sombres, clairs, expérimentaux)
 
 ---
 
-## 🧠 Philosophie
+## 🧨 Philosophie
 
-Warpocalypse n’est pas un plugin “chirurgical”.  
-C’est un **instrument**.
+Warpocalypse casse la maison mais garde un bout de papier peint.
 
 - Les paramètres influencent des probabilités
 - Le résultat peut être subtil ou radical
 - Le chaos est borné, jamais totalement libre
-- La seed est là pour *dompter* l’aléatoire, pas pour l’annuler
+- La seed est là pour cadrer l’aléatoire
 
 ---
 
@@ -54,7 +54,32 @@ Principales dépendances :
 - `sounddevice`
 - `pydub`
 - `tkinter` (inclus avec Python sur la plupart des systèmes)
+- `Pillow`
 
 Installation typique :
 ```bash
 pip install -r requirements.txt
+
+📜 Licence
+
+Ce logiciel est distribué sous la GNU General Public License v3.0.
+
+🛠️ Contribuer
+
+Les contributions sont les bienvenues via Pull Requests.
+
+⚠️ Avertissement
+
+Ce logiciel est fourni sans garantie. L'auteur décline toute responsabilité en cas de dommage ou de dysfonctionnement.
+
+💡 Pourquoi ce projet est-il sous licence libre ?
+
+Ce projet s'inscrit dans la philosophie du logiciel libre, promue par des associations comme April.
+
+Nous croyons que le partage des connaissances et des outils est essentiel pour une société numérique plus juste et transparente.
+
+📬 Contact:
+
+clementmorel@free.fr
+
+🎧️ Bonne destructiration !

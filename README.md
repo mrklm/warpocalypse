@@ -14,6 +14,22 @@ L’objectif est **l’accident contrôlé**.
 
 ---
 
+
+## 📥 Téléchargement
+
+- 🐧 **Linux**
+  - [warpocalypse-1.1.6-linux-x86_64.AppImage](https://github.com/mrklm/warpocalypse/releases)
+  - [warpocalypse-1.1.6-linux-x86_64.AppImage.SHA256](https://github.com/mrklm/warpocalypse/releases)
+  - [warpocalypse-1.1.6-linux-x86_64.tar.gz](https://github.com/mrklm/warpocalypse/releases)
+  - [warpocalypse-1.1.6-linux-x86_64.tar.gz.SHA256](https://github.com/mrklm/warpocalypse/releases)
+  
+- 🍎 **macOS**
+  - -à venir-
+  - 
+- 🪟 **Windows**  
+  - -à venir-
+
+---   
 ## ✨ Fonctionnalités principales
 
 - Chargement de fichiers audio :

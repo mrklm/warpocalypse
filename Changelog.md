@@ -3,9 +3,18 @@
 Toutes les modifications notables de ce projet sont documentées ici.  
 Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 
+
 ---
 
-## [1.0.1] 2026/02/09
+## [1.1.3] 2026/02/10
+
+### Modifié
+
+ - Ajout de double traits (blanc et noir) pour sélectionner la zone à boucler
+
+---
+
+## [1.1.2] 2026/02/09
 
 ### Modifié
 

@@ -397,6 +397,13 @@ class WarpocalypseApp:
 
         # Mode Loop (toggle)
         self.var_loop_mode = tk.BooleanVar(value=False)
+
+        # Loop selection (sur waveform) : fractions [0..1]
+        self._loop_start_frac: float = 0.0
+        self._loop_end_frac: float = 1.0
+        self._loop_drag: str | None = None  # "start" | "end" | None
+        self._loop_pad_px: int = 10  # distance de saisie des poignées
+
         self.chk_loop_mode: ttk.Checkbutton | None = None
 
         self._build_ui()
@@ -440,6 +447,13 @@ class WarpocalypseApp:
 
         s.configure("TLabel", background=bg, foreground=fg)
         s.configure("Panel.TLabel", background=panel, foreground=fg)
+
+        s.configure("Panel.TCheckbutton", background=panel, foreground=fg)
+        s.map(
+            "Panel.TCheckbutton",
+            background=[("active", panel)],
+            foreground=[("disabled", "#777777")],
+        )
 
         s.configure("TButton", background=panel, foreground=fg)
         s.map("TButton",
@@ -589,8 +603,7 @@ class WarpocalypseApp:
         act2.columnconfigure(0, weight=1)
         act2.columnconfigure(1, weight=1)
         ttk.Button(act2, text="Preview", command=self._on_preview).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(act2, text="Stop", command=self._on_stop).grid(row=0, column=1, sticky="ew")
-        # Mode Loop (case à cocher) - même largeur que Export
+        ttk.Button(act2, text="Stop", command=self._on_stop).grid(row=0, column=1, sticky="ew")        # Mode Loop (case à cocher) - même largeur que Export
         self.chk_loop_mode = ttk.Checkbutton(
             left,
             text="Mode Loop",
@@ -599,6 +612,7 @@ class WarpocalypseApp:
             style="Panel.TCheckbutton",
         )
         self.chk_loop_mode.grid(row=20, column=0, sticky="ew", pady=(8, 0))
+
         ttk.Button(left, text="Exporter WAV…", command=self._on_export).grid(row=21, column=0, sticky="ew", pady=(8, 0))
 
         # --- RIGHT (waveform + potards + infos) ---
@@ -640,6 +654,7 @@ class WarpocalypseApp:
         )
         self.canvas.grid(row=0, column=0, sticky="nsew")
         self.canvas.bind("<Configure>", lambda _e: self._redraw_waveform())
+
         self.canvas.bind("<Button-1>", self._on_canvas_down)
         self.canvas.bind("<B1-Motion>", self._on_canvas_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_canvas_up)
@@ -838,13 +853,108 @@ class WarpocalypseApp:
                 self._ensure_default_loop()
             except Exception:
                 pass
-        try:
-            self._redraw_waveform()
-        except Exception:
-            pass
+        self._redraw_waveform()
         self._log(f"Mode Loop -> {bool(self.var_loop_mode.get())}")
 
+
+
+    def _loop_has_audio(self) -> bool:
+        return (self.src_audio is not None and self.src_sr is not None) or (self.out_audio is not None and self.out_sr is not None)
+
+    def _loop_has_valid_selection(self) -> bool:
+        if not self._loop_has_audio():
+            return False
+        if self._loop_end_frac <= self._loop_start_frac:
+            return False
+        # durée mini ~80 ms
+        audio, sr = self._get_preview_buffer(raw=True)
+        if audio is None or sr is None or len(audio) == 0:
+            return False
+        dur = len(audio) / float(sr)
+        seg = (self._loop_end_frac - self._loop_start_frac) * dur
+        return seg >= 0.08
+
+    def _loop_frac_from_x(self, x: int) -> float:
+        w = max(1, int(self.canvas.winfo_width()))
+        return float(max(0.0, min(1.0, float(x) / float(w))))
+
+    def _loop_x_from_frac(self, f: float) -> int:
+        w = max(1, int(self.canvas.winfo_width()))
+        return int(max(0.0, min(1.0, float(f))) * w)
+
+    def _on_canvas_down(self, e: tk.Event) -> None:
+        if not bool(self.var_loop_mode.get()):
+            return
+        if not self._loop_has_audio():
+            return
+
+        x = int(getattr(e, "x", 0))
+        xs = self._loop_x_from_frac(self._loop_start_frac)
+        xe = self._loop_x_from_frac(self._loop_end_frac)
+
+        if abs(x - xs) <= self._loop_pad_px:
+            self._loop_drag = "start"
+        elif abs(x - xe) <= self._loop_pad_px:
+            self._loop_drag = "end"
+        else:
+            # prendre la poignée la plus proche
+            self._loop_drag = "start" if abs(x - xs) <= abs(x - xe) else "end"
+
+        self._on_canvas_drag(e)
+
+    def _on_canvas_drag(self, e: tk.Event) -> None:
+        if not bool(self.var_loop_mode.get()):
+            return
+        if self._loop_drag not in ("start", "end"):
+            return
+        if not self._loop_has_audio():
+            return
+
+        f = self._loop_frac_from_x(int(getattr(e, "x", 0)))
+        min_gap = 0.002  # évite start==end
+
+        if self._loop_drag == "start":
+            self._loop_start_frac = float(max(0.0, min(self._loop_end_frac - min_gap, f)))
+        else:
+            self._loop_end_frac = float(min(1.0, max(self._loop_start_frac + min_gap, f)))
+
+        self._redraw_waveform()
+
+    def _on_canvas_up(self, _e: tk.Event) -> None:
+        self._loop_drag = None
+
+    def _apply_loop_to_buffer(self, audio: np.ndarray, sr: int) -> np.ndarray:
+        """Découpe le buffer selon la sélection loop si Mode Loop actif."""
+        if not bool(self.var_loop_mode.get()):
+            return audio
+        if not self._loop_has_valid_selection():
+            return audio
+
+        n = len(audio)
+        start = int(round(self._loop_start_frac * n))
+        end = int(round(self._loop_end_frac * n))
+        start = max(0, min(n - 1, start))
+        end = max(start + 1, min(n, end))
+        return audio[start:end]
+
+    def _ensure_default_loop(self) -> None:
+        """Initialise une sélection loop raisonnable à l'activation."""
+        if not self._loop_has_audio():
+            self._loop_start_frac = 0.0
+            self._loop_end_frac = 1.0
+            return
+        audio, sr = self._get_preview_buffer(raw=True)
+        if audio is None or sr is None or len(audio) == 0:
+            self._loop_start_frac = 0.0
+            self._loop_end_frac = 1.0
+            return
+        dur = len(audio) / float(sr)
+        end_s = min(1.5, max(0.25, dur * 0.15))
+        self._loop_start_frac = 0.0
+        self._loop_end_frac = float(max(0.01, min(1.0, end_s / dur))) if dur > 0 else 1.0
+
     # ---- helpers UI ----
+
     def _add_scale(self, parent: ttk.Frame, label: str, var: tk.DoubleVar, a: float, b: float, row: int) -> None:
         frm = ttk.Frame(parent, style="Panel.TFrame")
         frm.grid(row=row, column=0, sticky="ew", pady=3)
@@ -1072,6 +1182,7 @@ class WarpocalypseApp:
                 self.btn_render.configure(text="Rendre", state="normal")
             except Exception:
                 pass
+
     def _on_preview(self) -> None:
         audio, sr = self._get_preview_buffer()
         if audio is None or sr is None:
@@ -1089,44 +1200,36 @@ class WarpocalypseApp:
 
         def _play_worker(buf: np.ndarray, samplerate: int, loop_on: bool) -> None:
             try:
-                sd.play(buf, samplerate, blocking=False)
-
                 while True:
                     if self._stop_request.is_set():
                         break
 
-                    # stream actif ?
-                    try:
-                        stream = sd.get_stream()
-                        active = bool(getattr(stream, "active", False)) if stream is not None else False
-                    except Exception:
-                        active = False
+                    sd.play(buf, samplerate, blocking=False)
 
-                    if not active:
-                        if loop_on and not self._stop_request.is_set():
-                            try:
-                                sd.play(buf, samplerate, blocking=False)
-                            except Exception:
-                                break
-                        else:
+                    # Attendre fin OU stop demandé
+                    while True:
+                        if self._stop_request.is_set():
                             break
+                        try:
+                            stream = sd.get_stream()
+                            active = bool(getattr(stream, "active", False)) if stream is not None else False
+                        except Exception:
+                            active = False
+                        if not active:
+                            break
+                        sd.sleep(30)
 
-                    sd.sleep(30)
+                    # IMPORTANT : stop exécuté dans le MÊME thread que play()
+                    try:
+                        sd.stop()
+                    except Exception:
+                        pass
 
-                # IMPORTANT : stop exécuté dans le MÊME thread que play()
-                try:
-                    sd.stop()
-                except Exception:
-                    pass
+                    if not loop_on or self._stop_request.is_set():
+                        break
 
             except Exception as e:
-                self.root.after(
-                    0,
-                    lambda: messagebox.showerror(
-                        "Erreur",
-                        f"Lecture audio impossible.\n\nDétail : {e}",
-                    ),
-                )
+                self.root.after(0, lambda: messagebox.showerror("Erreur", f"Lecture audio impossible.\n\nDétail : {e}"))
             finally:
                 with self._play_lock:
                     self._is_playing = False
@@ -1139,29 +1242,21 @@ class WarpocalypseApp:
         self._play_thread.start()
         self._log("Preview: lecture lancée.")
 
+
     def _on_stop(self) -> None:
         # Ne pas appeler sd.stop() depuis Tkinter (segfault observé)
         self._stop_request.set()
         self._log("Stop: arrêt demandé.")
+
     def _get_preview_buffer(self, raw: bool = False) -> tuple[np.ndarray | None, int | None]:
         if self.src_audio is None or self.src_sr is None:
             messagebox.showinfo("Information", "Veuillez charger un fichier audio avant de pré-écouter.")
             return None, None
 
         if self.out_audio is not None and self.out_sr is not None:
-            buf = self.out_audio
-            sr = self.out_sr
-        else:
-            buf = self.src_audio
-            sr = self.src_sr
+            return self.out_audio, self.out_sr
 
-        if not raw and buf is not None and sr is not None:
-            try:
-                buf = self._apply_loop_to_buffer(buf, sr)
-            except Exception:
-                pass
-
-        return buf, sr
+        return self.src_audio, self.src_sr
 
     def _on_export(self) -> None:
         if self.out_audio is None or self.out_sr is None:
@@ -1218,107 +1313,13 @@ class WarpocalypseApp:
         messagebox.showinfo("Preset", "Le preset a été chargé.")
         self._log(f"Preset chargé: {path}")
 
-    # ---------------- Loop (poignées sur waveform) ----------------
-
-    def _loop_has_audio(self) -> bool:
-        return (self.src_audio is not None and self.src_sr is not None) or (self.out_audio is not None and self.out_sr is not None)
-
-    def _loop_has_valid_selection(self) -> bool:
-        if not self._loop_has_audio():
-            return False
-        if self._loop_end_frac <= self._loop_start_frac:
-            return False
-        audio, sr = self._get_preview_buffer(raw=True)
-        if audio is None or sr is None or len(audio) == 0:
-            return False
-        dur = len(audio) / float(sr)
-        seg = (self._loop_end_frac - self._loop_start_frac) * dur
-        return seg >= 0.08  # 80 ms mini
-
-    def _loop_frac_from_x(self, x: int) -> float:
-        w = max(1, int(self.canvas.winfo_width()))
-        return float(np.clip(float(x) / float(w), 0.0, 1.0))
-
-    def _loop_x_from_frac(self, f: float) -> int:
-        w = max(1, int(self.canvas.winfo_width()))
-        return int(float(np.clip(float(f), 0.0, 1.0)) * w)
-
-    def _ensure_default_loop(self) -> None:
-        """Initialise une sélection loop raisonnable à l'activation (début du signal)."""
-        audio, sr = self._get_preview_buffer(raw=True)
-        if audio is None or sr is None or len(audio) == 0:
-            self._loop_start_frac = 0.0
-            self._loop_end_frac = 1.0
-            return
-        dur = len(audio) / float(sr)
-        end_s = min(1.5, max(0.25, dur * 0.15))
-        self._loop_start_frac = 0.0
-        self._loop_end_frac = float(np.clip(end_s / dur, 0.01, 1.0)) if dur > 0 else 1.0
-
-    def _on_canvas_down(self, e: tk.Event) -> None:
-        if not bool(self.var_loop_mode.get()):
-            return
-        if not self._loop_has_audio():
-            return
-
-        x = int(getattr(e, "x", 0))
-        xs = self._loop_x_from_frac(self._loop_start_frac)
-        xe = self._loop_x_from_frac(self._loop_end_frac)
-
-        if abs(x - xs) <= self._loop_pad_px:
-            self._loop_drag = "start"
-        elif abs(x - xe) <= self._loop_pad_px:
-            self._loop_drag = "end"
-        else:
-            self._loop_drag = "start" if abs(x - xs) <= abs(x - xe) else "end"
-
-        self._on_canvas_drag(e)
-
-    def _on_canvas_drag(self, e: tk.Event) -> None:
-        if not bool(self.var_loop_mode.get()):
-            return
-        if self._loop_drag not in ("start", "end"):
-            return
-        if not self._loop_has_audio():
-            return
-
-        f = self._loop_frac_from_x(int(getattr(e, "x", 0)))
-        min_gap = 0.002
-
-        if self._loop_drag == "start":
-            self._loop_start_frac = float(np.clip(f, 0.0, max(0.0, self._loop_end_frac - min_gap)))
-        else:
-            self._loop_end_frac = float(np.clip(f, min(1.0, self._loop_start_frac + min_gap), 1.0))
-
-        self._redraw_waveform()
-
-    def _on_canvas_up(self, _e: tk.Event) -> None:
-        self._loop_drag = None
-
-    def _apply_loop_to_buffer(self, audio: np.ndarray, sr: int) -> np.ndarray:
-        """Découpe le buffer selon la sélection loop si Mode Loop actif."""
-        if not bool(self.var_loop_mode.get()):
-            return audio
-        if not self._loop_has_valid_selection():
-            return audio
-
-        n = len(audio)
-        start = int(round(self._loop_start_frac * n))
-        end = int(round(self._loop_end_frac * n))
-        start = int(np.clip(start, 0, max(0, n - 1)))
-        end = int(np.clip(end, start + 1, n))
-        return audio[start:end]
-
     # ---------------- Waveform ----------------
 
     def _redraw_waveform(self) -> None:
-        if not hasattr(self, "canvas") or self.canvas is None:
-            return
-
         self.canvas.delete("all")
 
-        audio: np.ndarray | None = None
-        sr: int | None = None
+        audio = None
+        sr = None
         if self.out_audio is not None and self.out_sr is not None:
             audio = self.out_audio
             sr = self.out_sr
@@ -1330,8 +1331,8 @@ class WarpocalypseApp:
             self._draw_center_text("Aucun signal")
             return
 
-        w = max(1, int(self.canvas.winfo_width()))
-        h = max(1, int(self.canvas.winfo_height()))
+        w = max(1, self.canvas.winfo_width())
+        h = max(1, self.canvas.winfo_height())
 
         n = len(audio)
         step = max(1, n // w)
@@ -1347,33 +1348,36 @@ class WarpocalypseApp:
             self.canvas.create_line(x_prev, y_prev, x, y, fill=self._col_accent)
             x_prev, y_prev = x, y
 
-        dur = n / float(sr)
+        dur = n / sr
+        self.canvas.create_text(10, 10, anchor="nw", fill="white", text=f"{dur:.2f}s — {sr}Hz")
 
-        # Overlay loop (poignées + zone) si Mode Loop actif
+        # Traits de sélection (début/fin) si Mode Loop activé
         if bool(self.var_loop_mode.get()) and self._loop_has_audio():
             xs = self._loop_x_from_frac(self._loop_start_frac)
             xe = self._loop_x_from_frac(self._loop_end_frac)
             if xe < xs:
                 xs, xe = xe, xs
 
+            # Zone sélectionnée (voile léger)
             try:
                 self.canvas.create_rectangle(xs, 0, xe, h, fill="", outline="", stipple="gray50", tags="loop")
             except Exception:
                 pass
 
-            self.canvas.create_line(xs, 0, xs, h, fill="white", width=2, tags="loop")
-            self.canvas.create_line(xe, 0, xe, h, fill="white", width=2, tags="loop")
+            # Poignées: noir + liseré blanc (visibles sur tous thèmes)
+            self.canvas.create_line(xs, 0, xs, h, fill="white", width=4, tags="loop")
+            self.canvas.create_line(xs, 0, xs, h, fill="black", width=2, tags="loop")
+            self.canvas.create_line(xe, 0, xe, h, fill="white", width=4, tags="loop")
+            self.canvas.create_line(xe, 0, xe, h, fill="black", width=2, tags="loop")
 
             try:
-                seg_dur = max(0.0, (self._loop_end_frac - self._loop_start_frac) * float(dur))
-                self.canvas.create_text(10, 28, anchor="nw", fill="white", text=f"Loop: {seg_dur:.2f}s", tags="loop")
+                seg = max(0.0, (self._loop_end_frac - self._loop_start_frac) * float(dur))
+                self.canvas.create_text(10, 28, anchor="nw", fill="white", text=f"Loop: {seg:.2f}s", tags="loop")
             except Exception:
                 pass
 
-        self.canvas.create_text(10, 10, anchor="nw", fill="white", text=f"{dur:.2f}s — {sr}Hz")
 
     def _draw_center_text(self, text: str) -> None:
-        w = max(1, int(self.canvas.winfo_width()))
-        h = max(1, int(self.canvas.winfo_height()))
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
         self.canvas.create_text(w // 2, h // 2, fill="white", text=text)
-

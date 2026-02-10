@@ -7,6 +7,13 @@ L’objectif est **l’accident contrôlé**.
 
 ---
 
+## 👁️ Aperçu
+
+![Fenêtre general](screenshots/aide.png)
+![Fenêtre options](screenshots/son.png)
+
+---
+
 ## ✨ Fonctionnalités principales
 
 - Chargement de fichiers audio :

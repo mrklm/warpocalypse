@@ -27,8 +27,8 @@ from engine import render
 APP_NAME = "Warpocalypse"
 APP_VERSION = "1.1.4"
 
-APP_TITLE = APP_NAME
-DEFAULT_GEOMETRY = "1060x740"
+APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
+DEFAULT_GEOMETRY = "1000x740"
 
 # --- Bibli de thèmes (issus de Garage) ---
 THEMES = {
@@ -613,7 +613,9 @@ class WarpocalypseApp:
         )
         self.chk_loop_mode.grid(row=20, column=0, sticky="ew", pady=(8, 0))
 
-        ttk.Button(left, text="Exporter WAV…", command=self._on_export).grid(row=21, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(left, text="Exporter fichier entier…", command=self._on_export).grid(row=21, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(left, text="Exporter loop…", command=self._on_export_loop).grid(row=22, column=0, sticky="ew", pady=(6, 0))
+
 
         # --- RIGHT (waveform + potards + infos) ---
         right.columnconfigure(0, weight=1)
@@ -1292,6 +1294,53 @@ class WarpocalypseApp:
 
         messagebox.showinfo("Export", "Le fichier a été exporté en WAV.")
         self._log(f"Export OK: {path}")
+
+    def _on_export_loop(self) -> None:
+        # Il faut au moins un buffer dispo (rendu ou source)
+        if self.src_audio is None or self.src_sr is None:
+            messagebox.showinfo("Information", "Veuillez charger un fichier audio avant d’exporter une loop.")
+            return
+
+        if not bool(self.var_loop_mode.get()):
+            messagebox.showinfo("Information", "Veuillez activer le Mode Loop et définir une sélection avant d’exporter.")
+            return
+
+        if not self._loop_has_valid_selection():
+            messagebox.showinfo("Information", "Sélection de loop invalide ou trop courte. Ajustez les poignées sur la forme d’onde.")
+            return
+
+        # Buffer de base : rendu si dispo, sinon source
+        if self.out_audio is not None and self.out_sr is not None:
+            base = self.out_audio
+            sr = self.out_sr
+        else:
+            base = self.src_audio
+            sr = self.src_sr
+
+        # Découpe selon la sélection loop
+        try:
+            seg = self._apply_loop_to_buffer(base, sr)
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Impossible d’extraire la loop.\n\nDétail : {e}")
+            return
+
+        path = filedialog.asksaveasfilename(
+            title="Exporter la loop en WAV",
+            defaultextension=".wav",
+            filetypes=[("WAV", "*.wav")],
+        )
+        if not path:
+            return
+
+        try:
+            export_wav(path, seg, sr)
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Export loop impossible.\n\nDétail : {e}")
+            return
+
+        messagebox.showinfo("Export", "La loop a été exportée en WAV.")
+        self._log(f"Export loop OK: {path}")
+
 
     def _on_save_preset(self) -> None:
         self._sync_params_from_ui()

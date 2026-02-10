@@ -6,6 +6,15 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 
 ---
 
+## [1.1.4] 2026/02/10
+
+### Modifié
+
+ - Loop stable (timing / continuité audio)
+ - Bug affichage des traits de sélection
+
+---
+
 ## [1.1.3] 2026/02/10
 
 ### Modifié

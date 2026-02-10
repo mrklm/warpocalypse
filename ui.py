@@ -25,7 +25,7 @@ from audio_io import load_audio, export_wav
 from engine import render
 
 APP_NAME = "Warpocalypse"
-APP_VERSION = "0.9.0"
+APP_VERSION = "1.1.4"
 
 APP_TITLE = APP_NAME
 DEFAULT_GEOMETRY = "1060x740"
@@ -1253,10 +1253,23 @@ class WarpocalypseApp:
             messagebox.showinfo("Information", "Veuillez charger un fichier audio avant de pré-écouter.")
             return None, None
 
+        # Buffer de base : rendu si dispo, sinon source
         if self.out_audio is not None and self.out_sr is not None:
-            return self.out_audio, self.out_sr
+            buf = self.out_audio
+            sr = self.out_sr
+        else:
+            buf = self.src_audio
+            sr = self.src_sr
 
-        return self.src_audio, self.src_sr
+        # Appliquer la sélection loop uniquement si raw=False
+        if not raw and buf is not None and sr is not None:
+            try:
+                buf = self._apply_loop_to_buffer(buf, sr)
+            except Exception:
+                pass
+
+        return buf, sr
+
 
     def _on_export(self) -> None:
         if self.out_audio is None or self.out_sr is None:

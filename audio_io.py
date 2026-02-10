@@ -169,6 +169,88 @@ def _ensure_pydub_ready() -> None:
     _PYDUB_CONFIGURED = True
 
 
+def get_ffmpeg_diagnostics(max_candidates_per_root: int = 8) -> str:
+    """
+    Renvoie un diagnostic texte :
+      - chemins trouvés (embarqué / PATH)
+      - racines testées
+      - quelques candidats testés par racine (présent/exécutable)
+    Ne configure pas pydub et ne lève pas d'exception si ffmpeg manque.
+    """
+    arch = _norm_arch(platform.machine())
+    roots = _candidate_roots()
+
+    found_ffmpeg = _find_tool_binary("ffmpeg")
+    found_ffprobe = _find_tool_binary("ffprobe")
+
+    path_ffmpeg = shutil.which("ffmpeg")
+    path_ffprobe = shutil.which("ffprobe")
+
+    lines: list[str] = []
+    lines.append("Diagnostics ffmpeg / ffprobe")
+    lines.append("")
+    lines.append(f"OS: {platform.system()} {platform.release()}")
+    lines.append(f"Arch: {platform.machine()} (normalisée: {arch})")
+    lines.append(f"sys.executable: {sys.executable}")
+    if os.environ.get("APPDIR"):
+        lines.append(f"APPDIR: {os.environ.get('APPDIR')}")
+    lines.append("")
+
+    lines.append("Résultat (détection interne):")
+    lines.append(f"  ffmpeg : {found_ffmpeg or '— introuvable —'}")
+    lines.append(f"  ffprobe: {found_ffprobe or '— introuvable —'}")
+    lines.append("")
+    lines.append("Résultat (PATH système via which):")
+    lines.append(f"  ffmpeg : {path_ffmpeg or '— introuvable —'}")
+    lines.append(f"  ffprobe: {path_ffprobe or '— introuvable —'}")
+    lines.append("")
+    lines.append("Racines testées (ordre):")
+
+    if not roots:
+        lines.append("  (aucune)")
+    else:
+        for i, r in enumerate(roots, 1):
+            lines.append(f"  {i}. {r}")
+
+    lines.append("")
+    lines.append("Candidats testés (présence + exécutable):")
+
+    # Montrer un aperçu de candidats par racine, sans spammer
+    for r in roots:
+        lines.append(f"- Root: {r}")
+        cands = _tool_candidates(r, arch, "ffmpeg")
+        shown = 0
+        for p in cands:
+            if shown >= max_candidates_per_root:
+                break
+            try:
+                exists = p.is_file()
+                xok = os.access(str(p), os.X_OK) if exists else False
+            except Exception:
+                exists = False
+                xok = False
+            flag = "OK" if (exists and xok) else ("présent" if exists else "absent")
+            lines.append(f"    {flag:7}  {p}")
+            shown += 1
+
+    return "\n".join(lines)
+
+def get_ffmpeg_status_short() -> str:
+    """
+    Retourne un statut court pour l'UI.
+    Exemple :
+      - "ffmpeg: OK — ffprobe: OK"
+      - "ffmpeg: Non trouvé — ffprobe: Non trouvé"
+    """
+    ffmpeg = _find_tool_binary("ffmpeg")
+    ffprobe = _find_tool_binary("ffprobe")
+
+    s_ffmpeg = "OK" if ffmpeg else "Non trouvé"
+    s_ffprobe = "OK" if ffprobe else "Non trouvé"
+
+    return f"ffmpeg: {s_ffmpeg} — ffprobe: {s_ffprobe}"
+
+
 def load_audio(path: str) -> tuple[np.ndarray, int]:
     """
     Charge un fichier audio et retourne (audio_mono_float32, sample_rate).

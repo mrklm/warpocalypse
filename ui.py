@@ -21,11 +21,11 @@ import numpy as np
 import sounddevice as sd
 
 from presets import Params, save_preset, load_preset
-from audio_io import load_audio, export_wav
+from audio_io import load_audio, export_wav, get_ffmpeg_status_short
 from engine import render
 
 APP_NAME = "Warpocalypse"
-APP_VERSION = "1.1.5"
+APP_VERSION = "1.1.6"
 
 APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
 DEFAULT_GEOMETRY = "1000x740"
@@ -407,6 +407,7 @@ class WarpocalypseApp:
         self.chk_loop_mode: ttk.Checkbutton | None = None
 
         self._build_ui()
+        self.lbl_ffmpeg.configure(text=get_ffmpeg_status_short())
         self._load_splash_image()
         self._apply_splash_layer()
         self._render_help_overlay()
@@ -514,6 +515,19 @@ class WarpocalypseApp:
         topbar = ttk.Frame(self.root, padding=(10, 6), style="Panel.TFrame")
         topbar.grid(row=0, column=0, sticky="ew")
         topbar.columnconfigure(0, weight=1)
+
+        # Statut ffmpeg/ffprobe à gauche (compact)
+        frm_diag = ttk.Frame(topbar, style="Panel.TFrame")
+        frm_diag.grid(row=0, column=0, sticky="w")
+
+        self.lbl_ffmpeg = ttk.Label(
+            frm_diag,
+            text=get_ffmpeg_status_short(),
+            style="Panel.TLabel",
+        )
+        self.lbl_ffmpeg.grid(row=0, column=0, sticky="w")
+
+
 
         # Thème à droite
         frm_theme = ttk.Frame(topbar, style="Panel.TFrame")
@@ -1088,6 +1102,8 @@ class WarpocalypseApp:
         self.lbl_info.configure(text=f"Chargé : {os.path.basename(path)} — {sr} Hz — {len(audio)/sr:.2f} s (mono)")
         self._log(f"Chargement OK: {path}")
         self._redraw_waveform()
+        self.lbl_ffmpeg.configure(text=get_ffmpeg_status_short())
+
         # Quand un son est chargé : afficher la forme d'onde (masquer l'aide)
         try:
             self.var_show_help.set(False)

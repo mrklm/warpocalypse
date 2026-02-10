@@ -6,6 +6,22 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 
 ---
 
+## [1.1.6] 2026/02/10
+
+### Ajouté
+
+ - Message de vérification en haut à gauche de l'IG: ffmpeg & ffprobe OK -ou- Non trouvés
+
+---
+
+## [1.1.5] 2026/02/10
+
+### Ajouté
+
+ - Utilisation de ffmpeg et ffprobe en mode embarqués
+
+---
+
 ## [1.1.4] 2026/02/10
 
 ### Modifié

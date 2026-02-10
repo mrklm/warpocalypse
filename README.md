@@ -59,24 +59,30 @@ Principales dépendances :
 Installation typique :
 ```bash
 pip install -r requirements.txt
+```
 
 📜 Licence
 
+
 Ce logiciel est distribué sous la GNU General Public License v3.0.
+
 
 🛠️ Contribuer
 
 Les contributions sont les bienvenues via Pull Requests.
 
+
 ⚠️ Avertissement
 
 Ce logiciel est fourni sans garantie. L'auteur décline toute responsabilité en cas de dommage ou de dysfonctionnement.
+
 
 💡 Pourquoi ce projet est-il sous licence libre ?
 
 Ce projet s'inscrit dans la philosophie du logiciel libre, promue par des associations comme April.
 
-Nous croyons que le partage des connaissances et des outils est essentiel pour une société numérique plus juste et transparente.
+Le partage des connaissances et des outils est essentiel pour une société numérique plus juste et transparente.
+
 
 📬 Contact:
 

@@ -6,6 +6,14 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 
 ---
 
+## [1.1.8] 2026/02/11
+
+### Modifié
+
+ - Compatibilité multi OS (chemin tools)
+ 
+---
+
 ## [1.1.7] 2026/02/11
 
 ### Modifié

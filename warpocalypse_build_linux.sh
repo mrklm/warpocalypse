@@ -31,6 +31,9 @@ FFPROBE_SRC="${TOOLS_LINUX_X86_64}/ffprobe"
 APPIMAGE_TOOL="${PROJECT_ROOT}/appimagetool.AppImage"
 APPIMAGE_TOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
 
+# PyInstaller spec (à supprimer)
+SPEC_FILE="${PROJECT_ROOT}/${APP_NAME}.spec"
+
 die() { echo "Erreur: $*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "Commande manquante: $1"; }
 
@@ -82,6 +85,7 @@ need_cmd mkdir
 
 # -------- clean begin --------
 rm -rf "${BUILD_DIR}" "${DIST_DIR}" "${APPDIR_DIR}"
+rm -f "${SPEC_FILE}"
 mkdir -p "${RELEASES_DIR}"
 
 # -------- venv build --------
@@ -104,6 +108,9 @@ pyinstaller \
 
 [[ -f "${DIST_DIR}/${APP_NAME}/${APP_NAME}" ]] || die "Binaire PyInstaller introuvable: ${DIST_DIR}/${APP_NAME}/${APP_NAME}"
 
+# Supprime le .spec généré par PyInstaller (systématique)
+rm -f "${SPEC_FILE}"
+
 # -------- inject assets into dist (pour AppImage + tar.gz) --------
 ASSETS_SRC="${PROJECT_ROOT}/assets"
 ASSETS_DST="${DIST_DIR}/${APP_NAME}/assets"
@@ -117,7 +124,6 @@ fi
 
 # Vérif dure : AIDE.md doit exister (sinon l'AppImage aura le bug)
 [[ -f "${ASSETS_DST}/AIDE.md" ]] || die "assets/AIDE.md manquant dans ${ASSETS_DST} (il sera introuvable en AppImage)."
-
 
 # -------- AppDir --------
 mkdir -p \
@@ -214,6 +220,9 @@ echo ""
 
 # -------- clean end (optional) --------
 deactivate || true
+
+# Supprime le .spec même si --clean n'est pas demandé (systématique)
+rm -f "${SPEC_FILE}"
 
 if [[ "${DO_CLEAN}" -eq 1 ]]; then
   rm -rf "${BUILD_DIR}" "${DIST_DIR}" "${APPDIR_DIR}" "${VENV_DIR}"

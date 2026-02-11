@@ -26,7 +26,7 @@ from audio_io import load_audio, export_wav, get_ffmpeg_status_short
 from engine import render
 
 APP_NAME = "Warpocalypse"
-APP_VERSION = "1.1.7"
+APP_VERSION = "1.1.8"
 
 APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
 DEFAULT_GEOMETRY = "1000x740"

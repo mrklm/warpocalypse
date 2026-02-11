@@ -91,42 +91,75 @@ def _candidate_roots() -> list[Path]:
     # Filtre grossier des valeurs vides / racine système
     return _unique_paths([r for r in roots if str(r) not in ("", "/")])
 
+def _platform_tags() -> list[str]:
+    """
+    Retourne les tags tools/<platform-arch>/ selon l'OS courant.
+    """
+    sysname = platform.system().lower()
+    arch = _norm_arch(platform.machine())
+
+    if sysname == "darwin":
+        # macOS Intel + Apple Silicon
+        return ["macos-arm64", "macos-x86_64", f"macos-{arch}"]
+
+    if sysname == "windows":
+        # Windows
+        return ["windows-x86_64", f"windows-{arch}"]
+
+    # Linux par défaut
+    return ["linux-x86_64", f"linux-{arch}"]
+
 
 def _tool_candidates(root: Path, arch: str, name: str) -> list[Path]:
     """
-    Construit des candidats pour tools/<platform-arch>/<name>.
-    Variantes supportées :
-      - root/tools/linux-x86_64/name
-      - root/usr/bin/tools/linux-x86_64/name (cas AppDir si root=APPDIR)
-      - root/tools/name (fallback)
+    Construit des candidats multi-OS pour tools/<platform-arch>/<name>.
+    Supporte Linux, macOS et Windows.
     """
     candidates: list[Path] = []
 
-    # Cas courants (dev + onedir + AppImage si root=.../usr/bin)
-    candidates.append(root / "tools" / "linux-x86_64" / name)
-    candidates.append(root / "tools" / f"linux-{arch}" / name)
+    tags = _platform_tags()
+
+    # Dev / onedir
+    for tag in tags:
+        candidates.append(root / "tools" / tag / name)
+
+    # fallback générique
     candidates.append(root / "tools" / name)
 
-    # AppDir classique (si root=APPDIR)
-    candidates.append(root / "usr" / "bin" / "tools" / "linux-x86_64" / name)
-    candidates.append(root / "usr" / "bin" / "tools" / f"linux-{arch}" / name)
+    # Cas AppDir (AppImage Linux)
+    for tag in tags:
+        candidates.append(root / "usr" / "bin" / "tools" / tag / name)
+
     candidates.append(root / "usr" / "bin" / "tools" / name)
 
     return candidates
 
-
 def _find_tool_binary(name: str) -> str | None:
     arch = _norm_arch(platform.machine())
+    sysname = platform.system().lower()
+
+    # Windows : essayer .exe d'abord
+    names = [name]
+    if sysname == "windows" and not name.lower().endswith(".exe"):
+        names = [f"{name}.exe", name]
+
     for root in _candidate_roots():
-        for cand in _tool_candidates(root, arch, name):
-            try:
-                if cand.is_file() and os.access(str(cand), os.X_OK):
-                    return str(cand)
-            except Exception:
-                continue
+        for nm in names:
+            for cand in _tool_candidates(root, arch, nm):
+                try:
+                    if cand.is_file() and os.access(str(cand), os.X_OK):
+                        return str(cand)
+                except Exception:
+                    continue
 
     # Fallback PATH
-    return shutil.which(name)
+    for nm in names:
+        p = shutil.which(nm)
+        if p:
+            return p
+
+    return None
+
 
 
 def _configure_pydub(ffmpeg_path: str, ffprobe_path: str | None) -> None:

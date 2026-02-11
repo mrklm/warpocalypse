@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ----------------------------------------------------
-# warpocalypse_build.sh — Build Linux (Ubuntu 24.04)
+# warpocalypse_build_linux.sh — Build Linux (Ubuntu 24.04)
 # Sortie dans ./releases/ :
 #   - warpocalypse-vX.X.X-x86_64.AppImage + .sha256
 #   - warpocalypse-vX.X.X-x86_64.tar.gz   + .sha256
@@ -10,13 +10,9 @@ set -euo pipefail
 # Embarque ffmpeg + ffprobe depuis: tools/linux-x86_64/
 #
 # Usage:
-#   ./warpocalypse_build.sh 1.1.5
-#   ./warpocalypse_build.sh 1.1.5 --clean
-#   ./warpocalypse_build.sh 1.1.5 --clean --no-download-appimagetool
-#
-# Notes:
-# - Nécessite: python3-venv, python3-dev, build-essential, patchelf
-# - Pour tester l’AppImage sur Ubuntu 24.04: libfuse2 est souvent nécessaire
+#   ./warpocalypse_build_linux.sh 1.1.6
+#   ./warpocalypse_build_linux.sh 1.1.6 --clean
+#   ./warpocalypse_build_linux.sh 1.1.6 --clean --no-download-appimagetool
 # ----------------------------------------------------
 
 APP_NAME="warpocalypse"
@@ -36,12 +32,11 @@ APPIMAGE_TOOL="${PROJECT_ROOT}/appimagetool.AppImage"
 APPIMAGE_TOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
 
 die() { echo "Erreur: $*" >&2; exit 1; }
-
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "Commande manquante: $1"; }
 
 # -------- args --------
 if [[ $# -lt 1 ]]; then
-  die "Version requise. Exemple: ./warpocalypse_build.sh 1.1.5"
+  die "Version requise. Exemple: ./warpocalypse_build_linux.sh 1.1.6"
 fi
 
 VERSION="$1"
@@ -62,7 +57,7 @@ done
 ARCH_RAW="$(uname -m)"
 case "$ARCH_RAW" in
   x86_64|amd64) ARCH="x86_64" ;;
-  *) die "Architecture non supportée pour ce script: ${ARCH_RAW} (attendu: x86_64)" ;;
+  *) die "Architecture non supportée: ${ARCH_RAW} (attendu: x86_64)" ;;
 esac
 
 APPIMAGE_OUT="${RELEASES_DIR}/${APP_NAME}-v${VERSION}-${ARCH}.AppImage"
@@ -78,7 +73,7 @@ need_cmd cp
 need_cmd rm
 need_cmd mkdir
 
-[[ -f "${PROJECT_ROOT}/warpocalypse.py" ]] || die "warpocalypse.py introuvable à la racine du projet."
+[[ -f "${PROJECT_ROOT}/warpocalypse.py" ]] || die "warpocalypse.py introuvable."
 [[ -f "${PROJECT_ROOT}/requirements.txt" ]] || die "requirements.txt introuvable."
 
 [[ -d "${TOOLS_LINUX_X86_64}" ]] || die "Dossier tools/linux-x86_64 introuvable."
@@ -109,6 +104,21 @@ pyinstaller \
 
 [[ -f "${DIST_DIR}/${APP_NAME}/${APP_NAME}" ]] || die "Binaire PyInstaller introuvable: ${DIST_DIR}/${APP_NAME}/${APP_NAME}"
 
+# -------- inject assets into dist (pour AppImage + tar.gz) --------
+ASSETS_SRC="${PROJECT_ROOT}/assets"
+ASSETS_DST="${DIST_DIR}/${APP_NAME}/assets"
+
+if [[ -d "${ASSETS_SRC}" ]]; then
+  rm -rf "${ASSETS_DST}"
+  cp -a "${ASSETS_SRC}" "${ASSETS_DST}"
+else
+  die "Dossier assets/ introuvable: ${ASSETS_SRC}"
+fi
+
+# Vérif dure : AIDE.md doit exister (sinon l'AppImage aura le bug)
+[[ -f "${ASSETS_DST}/AIDE.md" ]] || die "assets/AIDE.md manquant dans ${ASSETS_DST} (il sera introuvable en AppImage)."
+
+
 # -------- AppDir --------
 mkdir -p \
   "${APPDIR_DIR}/usr/bin" \
@@ -124,14 +134,17 @@ cp -a "${FFMPEG_SRC}" "${FFPROBE_SRC}" "${APPDIR_DIR}/usr/bin/tools/linux-x86_64
 chmod +x "${APPDIR_DIR}/usr/bin/tools/linux-x86_64/ffmpeg" "${APPDIR_DIR}/usr/bin/tools/linux-x86_64/ffprobe"
 
 # Icône (si dispo)
-if [[ -f "${PROJECT_ROOT}/assets/warpocalypse.png" ]]; then
-  cp -a "${PROJECT_ROOT}/assets/warpocalypse.png" "${APPDIR_DIR}/usr/share/icons/hicolor/256x256/apps/warpocalypse.png"
+ICON_SRC="${PROJECT_ROOT}/assets/warpocalypse.png"
+ICON_DST="${APPDIR_DIR}/usr/share/icons/hicolor/256x256/apps/warpocalypse.png"
+if [[ -f "${ICON_SRC}" ]]; then
+  cp -a "${ICON_SRC}" "${ICON_DST}"
 else
   echo "Avertissement: assets/warpocalypse.png introuvable (icône AppImage absente)." >&2
 fi
 
-# Desktop file
-cat > "${APPDIR_DIR}/usr/share/applications/warpocalypse.desktop" <<'EOF'
+# Desktop file (dans usr/share/applications)
+DESKTOP_IN_USR="${APPDIR_DIR}/usr/share/applications/warpocalypse.desktop"
+cat > "${DESKTOP_IN_USR}" <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=Warpocalypse
@@ -149,6 +162,18 @@ export PATH="$HERE/usr/bin:$PATH"
 exec "$HERE/usr/bin/warpocalypse" "$@"
 EOF
 chmod +x "${APPDIR_DIR}/AppRun"
+
+# --- appimagetool: le .desktop doit être à la racine de l'AppDir ---
+cp -a "${DESKTOP_IN_USR}" "${APPDIR_DIR}/warpocalypse.desktop"
+
+# Icône à la racine (souvent apprécié; ignore si absent)
+if [[ -f "${ICON_DST}" ]]; then
+  cp -a "${ICON_DST}" "${APPDIR_DIR}/warpocalypse.png"
+fi
+
+# Vérification dure (preuve avant appimagetool)
+[[ -f "${APPDIR_DIR}/warpocalypse.desktop" ]] || die "Desktop file manquant à la racine: ${APPDIR_DIR}/warpocalypse.desktop"
+echo "OK: desktop présent à la racine -> ${APPDIR_DIR}/warpocalypse.desktop"
 
 # -------- appimagetool --------
 if [[ ! -f "${APPIMAGE_TOOL}" ]]; then

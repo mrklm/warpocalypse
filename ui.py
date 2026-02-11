@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import math
 import threading
 import tkinter as tk
@@ -25,7 +26,7 @@ from audio_io import load_audio, export_wav, get_ffmpeg_status_short
 from engine import render
 
 APP_NAME = "Warpocalypse"
-APP_VERSION = "1.1.6"
+APP_VERSION = "1.1.7"
 
 APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
 DEFAULT_GEOMETRY = "1000x740"
@@ -755,7 +756,31 @@ class WarpocalypseApp:
         self._update_help_visibility()
 
     def _assets_dir(self) -> str:
-        return os.path.join(os.path.dirname(__file__), "assets")
+        """Retourne le dossier assets/ en dev ET en build (PyInstaller/AppImage/tar.gz)."""
+        candidates: list[str] = []
+
+        # 1) PyInstaller (onefile) : extraction temporaire
+        meipass = getattr(sys, "_MEIPASS", None)
+        if isinstance(meipass, str) and meipass:
+            candidates.append(os.path.join(meipass, "assets"))
+
+        # 2) À côté de l'exécutable (PyInstaller onedir / AppImage)
+        try:
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            candidates.append(os.path.join(exe_dir, "assets"))
+        except Exception:
+            pass
+
+        # 3) À côté du fichier ui.py (dev ou bundle onedir)
+        candidates.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets"))
+
+        for p in candidates:
+            if os.path.isdir(p):
+                return p
+
+        # Fallback (chemin attendu en dev)
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+
 
     def _load_splash_image(self) -> None:
         """Charge assets/warpocalypse.png via Pillow (si disponible)."""

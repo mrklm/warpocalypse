@@ -6,6 +6,14 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 
 ---
 
+## [1.1.7] 2026/02/11
+
+### Modifié
+
+ - Le fichier d'aide est cherché dans plsieurs endroit pour le mode dév et le mode installé
+
+---
+
 ## [1.1.6] 2026/02/10
 
 ### Ajouté

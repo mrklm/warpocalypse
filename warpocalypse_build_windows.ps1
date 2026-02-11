@@ -1,28 +1,27 @@
 # build_windows.ps1
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File .\build_windows.ps1 1.1.6
-#   powershell -ExecutionPolicy Bypass -File .\build_windows.ps1 1.1.6 --clean
+#
+# Build Windows Warpocalypse (onedir + zip + sha256)
+# Sortie dans .\releases\
+#   - warpocalypse-vX.X.X-windows-x86_64.zip + .sha256
+#
+# Nettoyage COMPLET et PAR DÉFAUT en fin de script :
+#   - build/
+#   - dist/
+#   - .venv-build/
+# (releases/ est conservé)
 
 param(
   [Parameter(Mandatory=$true, Position=0)]
-  [string]$Version,
-
-  [Parameter(Mandatory=$false)]
-  [switch]$Clean
+  [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
 
 # ----------------------------------------------------
-# Build Windows Warpocalypse (onedir + zip + sha256)
-# Sortie dans .\releases\
-#   - warpocalypse-vX.X.X-windows-x86_64.zip + .sha256
-#
-# Embarque ffmpeg + ffprobe depuis:
-#   - tools\windows-x86_64\ffmpeg.exe / ffprobe.exe (préféré)
-#   - OU fallback: windows-x86_64\tools\ffmpeg.exe / ffprobe.exe
+# Config
 # ----------------------------------------------------
-
 $AppName      = "warpocalypse"
 $ProjectRoot  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ReleasesDir  = Join-Path $ProjectRoot "releases"
@@ -35,13 +34,13 @@ $AssetsSrc    = Join-Path $ProjectRoot "assets"
 $AssetsDst    = Join-Path (Join-Path $DistDir $AppName) "assets"
 
 # Tools (chemin attendu)
-$ToolsExpected = Join-Path (Join-Path $ProjectRoot "tools") "windows-x86_64"
-$FfmpegExpected = Join-Path $ToolsExpected "ffmpeg.exe"
+$ToolsExpected   = Join-Path (Join-Path $ProjectRoot "tools") "windows-x86_64"
+$FfmpegExpected  = Join-Path $ToolsExpected "ffmpeg.exe"
 $FfprobeExpected = Join-Path $ToolsExpected "ffprobe.exe"
 
-# Fallback (ton emplacement mentionné)
-$ToolsFallback = Join-Path (Join-Path $ProjectRoot "windows-x86_64") "tools"
-$FfmpegFallback = Join-Path $ToolsFallback "ffmpeg.exe"
+# Fallback
+$ToolsFallback   = Join-Path (Join-Path $ProjectRoot "windows-x86_64") "tools"
+$FfmpegFallback  = Join-Path $ToolsFallback "ffmpeg.exe"
 $FfprobeFallback = Join-Path $ToolsFallback "ffprobe.exe"
 
 function Die($msg) { throw $msg }
@@ -64,87 +63,117 @@ function Get-ToolsSource {
   Die "ffmpeg/ffprobe introuvables. Attendu: `n- $FfmpegExpected + $FfprobeExpected`nOU fallback: `n- $FfmpegFallback + $FfprobeFallback"
 }
 
-# -------- sanity checks --------
-Ensure-File (Join-Path $ProjectRoot "warpocalypse.py") "warpocalypse.py"
-Ensure-File (Join-Path $ProjectRoot "requirements.txt") "requirements.txt"
-Ensure-Dir  $AssetsSrc "assets/"
+# ----------------------------------------------------
+# Main (avec cleanup garanti en finally)
+# ----------------------------------------------------
+try {
+  # -------- sanity checks --------
+  Ensure-File (Join-Path $ProjectRoot "warpocalypse.py") "warpocalypse.py"
+  Ensure-File (Join-Path $ProjectRoot "requirements.txt") "requirements.txt"
+  Ensure-Dir  $AssetsSrc "assets/"
 
-$ToolsSrc = Get-ToolsSource
-$FfmpegSrc = Join-Path $ToolsSrc "ffmpeg.exe"
-$FfprobeSrc = Join-Path $ToolsSrc "ffprobe.exe"
-Ensure-File $FfmpegSrc "ffmpeg.exe"
-Ensure-File $FfprobeSrc "ffprobe.exe"
+  # Icône Windows attendue dans assets/
+  $IconPath = Join-Path $AssetsSrc "warpocalypse.ico"
+  Ensure-File $IconPath "assets/warpocalypse.ico"
 
-# -------- clean begin --------
-if (Test-Path -LiteralPath $BuildDir) { Remove-Item -Recurse -Force -LiteralPath $BuildDir }
-if (Test-Path -LiteralPath $DistDir)  { Remove-Item -Recurse -Force -LiteralPath $DistDir }
-if (Test-Path -LiteralPath $SpecFile) { Remove-Item -Force -LiteralPath $SpecFile }
+  $ToolsSrc = Get-ToolsSource
+  $FfmpegSrc = Join-Path $ToolsSrc "ffmpeg.exe"
+  $FfprobeSrc = Join-Path $ToolsSrc "ffprobe.exe"
+  Ensure-File $FfmpegSrc "ffmpeg.exe"
+  Ensure-File $FfprobeSrc "ffprobe.exe"
 
-New-Item -ItemType Directory -Force -Path $ReleasesDir | Out-Null
+  # -------- clean begin --------
+  if (Test-Path -LiteralPath $BuildDir) { Remove-Item -Recurse -Force -LiteralPath $BuildDir }
+  if (Test-Path -LiteralPath $DistDir)  { Remove-Item -Recurse -Force -LiteralPath $DistDir }
+  if (Test-Path -LiteralPath $SpecFile) { Remove-Item -Force -LiteralPath $SpecFile }
+  if (Test-Path -LiteralPath $VenvDir)  { Remove-Item -Recurse -Force -LiteralPath $VenvDir }
 
-# -------- venv build --------
-python -m venv $VenvDir
-$Py = Join-Path (Join-Path $VenvDir "Scripts") "python.exe"
-& $Py -m pip install -U pip wheel setuptools | Out-Null
-& $Py -m pip install -r (Join-Path $ProjectRoot "requirements.txt") | Out-Null
-& $Py -m pip install pyinstaller | Out-Null
+  New-Item -ItemType Directory -Force -Path $ReleasesDir | Out-Null
 
-# -------- pyinstaller (onedir + windowed) --------
-& $Py -m PyInstaller `
-  --noconfirm `
-  --clean `
-  --name $AppName `
-  --onedir `
-  --windowed `
-  (Join-Path $ProjectRoot "warpocalypse.py")
+  # -------- venv build --------
+  # Création venv: préférer le launcher Windows "py"
+  $PyLauncher = (Get-Command py -ErrorAction SilentlyContinue)
+  if ($PyLauncher) {
+    py -m venv $VenvDir
+  } else {
+    python -m venv $VenvDir
+  }
 
-$ExePath = Join-Path (Join-Path (Join-Path $DistDir $AppName) "") "$AppName.exe"
-Ensure-File $ExePath "Binaire PyInstaller"
+  $Py = Join-Path (Join-Path $VenvDir "Scripts") "python.exe"
 
-# Supprime le .spec généré
-if (Test-Path -LiteralPath $SpecFile) { Remove-Item -Force -LiteralPath $SpecFile }
+  Write-Host "=== VENV prêt ==="
+  Write-Host "Python venv: $Py"
+  & $Py -V
 
-# -------- inject assets into dist --------
-# => dist\warpocalypse\assets\...
-if (Test-Path -LiteralPath $AssetsDst) { Remove-Item -Recurse -Force -LiteralPath $AssetsDst }
-Copy-Item -Recurse -Force -LiteralPath $AssetsSrc -Destination $AssetsDst
+  Write-Host "=== PIP: upgrade outils de build (pip/wheel/setuptools) ==="
+  & $Py -m pip install -U pip wheel setuptools
 
-Ensure-File (Join-Path $AssetsDst "AIDE.md") "assets/AIDE.md dans dist"
+  Write-Host "=== PIP: installation deps (requirements.txt) ==="
+  & $Py -m pip install -r (Join-Path $ProjectRoot "requirements.txt")
 
-# -------- inject tools into dist --------
-# => dist\warpocalypse\tools\windows-x86_64\ffmpeg.exe
-$ToolsDst = Join-Path (Join-Path (Join-Path $DistDir $AppName) "tools") "windows-x86_64"
-New-Item -ItemType Directory -Force -Path $ToolsDst | Out-Null
-Copy-Item -Force -LiteralPath $FfmpegSrc  -Destination (Join-Path $ToolsDst "ffmpeg.exe")
-Copy-Item -Force -LiteralPath $FfprobeSrc -Destination (Join-Path $ToolsDst "ffprobe.exe")
+  Write-Host "=== PIP: installation PyInstaller ==="
+  & $Py -m pip install pyinstaller
 
-# -------- zip release --------
-$ZipName = "$AppName-v$Version-windows-x86_64.zip"
-$ZipOut  = Join-Path $ReleasesDir $ZipName
+  Write-Host "=== PyInstaller: build onedir ==="
 
-if (Test-Path -LiteralPath $ZipOut) { Remove-Item -Force -LiteralPath $ZipOut }
+  # -------- pyinstaller (onedir + windowed + icon) --------
+  & $Py -m PyInstaller `
+    --noconfirm `
+    --clean `
+    --name $AppName `
+    --onedir `
+    --windowed `
+    --icon $IconPath `
+    (Join-Path $ProjectRoot "warpocalypse.py")
 
-# On zip le dossier dist\warpocalypse\ (le contenu sera dans un dossier warpocalypse/ dans le zip)
-Compress-Archive -Path (Join-Path $DistDir $AppName) -DestinationPath $ZipOut
+  # Suppression sécurisée du fichier .spec généré par PyInstaller
+  if (Test-Path -LiteralPath $SpecFile) {
+    Remove-Item -Force -LiteralPath $SpecFile
+  }
 
-# -------- sha256 --------
-$Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ZipOut).Hash.ToLower()
-Set-Content -LiteralPath ($ZipOut + ".sha256") -Value "$Hash  $ZipName" -Encoding ASCII
+  $ExePath = Join-Path (Join-Path (Join-Path $DistDir $AppName) "") "$AppName.exe"
+  Ensure-File $ExePath "Binaire PyInstaller"
 
-Write-Host ""
-Write-Host "Build terminé."
-Write-Host "Sorties:"
-Get-ChildItem -LiteralPath $ReleasesDir | Sort-Object Name | Format-Table Name, Length
+  # -------- inject assets into dist --------
+  # => dist\warpocalypse\assets\...
+  if (Test-Path -LiteralPath $AssetsDst) { Remove-Item -Recurse -Force -LiteralPath $AssetsDst }
+  Copy-Item -Recurse -Force -LiteralPath $AssetsSrc -Destination $AssetsDst
 
-# -------- clean end (optional) --------
-# Supprime le .spec même si Clean n'est pas demandé
-if (Test-Path -LiteralPath $SpecFile) { Remove-Item -Force -LiteralPath $SpecFile }
+  Ensure-File (Join-Path $AssetsDst "AIDE.md") "assets/AIDE.md dans dist"
 
-if ($Clean) {
+  # -------- inject tools into dist --------
+  # => dist\warpocalypse\tools\windows-x86_64\ffmpeg.exe
+  $ToolsDst = Join-Path (Join-Path (Join-Path $DistDir $AppName) "tools") "windows-x86_64"
+  New-Item -ItemType Directory -Force -Path $ToolsDst | Out-Null
+  Copy-Item -Force -LiteralPath $FfmpegSrc  -Destination (Join-Path $ToolsDst "ffmpeg.exe")
+  Copy-Item -Force -LiteralPath $FfprobeSrc -Destination (Join-Path $ToolsDst "ffprobe.exe")
+
+  # -------- zip release --------
+  $ZipName = "$AppName-v$Version-windows-x86_64.zip"
+  $ZipOut  = Join-Path $ReleasesDir $ZipName
+
+  if (Test-Path -LiteralPath $ZipOut) { Remove-Item -Force -LiteralPath $ZipOut }
+
+  # On zip le dossier dist\warpocalypse\ (le contenu sera dans un dossier warpocalypse/ dans le zip)
+  Compress-Archive -Path (Join-Path $DistDir $AppName) -DestinationPath $ZipOut
+
+  # -------- sha256 --------
+  $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ZipOut).Hash.ToLower()
+  Set-Content -LiteralPath ($ZipOut + ".sha256") -Value "$Hash  $ZipName" -Encoding ASCII
+
+  Write-Host ""
+  Write-Host "Build terminé."
+  Write-Host "Sorties:"
+  Get-ChildItem -LiteralPath $ReleasesDir | Sort-Object Name | Format-Table Name, Length
+}
+finally {
+  # -------- clean end (ALWAYS) --------
+  # Objectif: ne rien laisser traîner sauf releases/
+  if (Test-Path -LiteralPath $SpecFile) { Remove-Item -Force -LiteralPath $SpecFile }
   if (Test-Path -LiteralPath $BuildDir) { Remove-Item -Recurse -Force -LiteralPath $BuildDir }
   if (Test-Path -LiteralPath $DistDir)  { Remove-Item -Recurse -Force -LiteralPath $DistDir }
   if (Test-Path -LiteralPath $VenvDir)  { Remove-Item -Recurse -Force -LiteralPath $VenvDir }
+
+  Write-Host ""
   Write-Host "Nettoyage effectué (build/dist/.venv-build supprimés)."
-} else {
-  Write-Host "Nettoyage non effectué. Ajouter --clean pour supprimer build/dist/.venv-build."
 }

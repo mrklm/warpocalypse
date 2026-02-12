@@ -26,10 +26,18 @@ from audio_io import load_audio, export_wav, get_ffmpeg_status_short
 from engine import render
 
 APP_NAME = "Warpocalypse"
-APP_VERSION = "1.1.8"
+APP_VERSION = "1.1.9"
 
 APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
 DEFAULT_GEOMETRY = "1000x740"
+
+# -------------------------------------------------
+# Aide : image "splash" (haut de l'aide)
+# Ajustez ces 3 constantes pour affiner la taille.
+# -------------------------------------------------
+HELP_SPLASH_MAX_W = 520   # largeur max (px)
+HELP_SPLASH_MAX_H = 260   # hauteur max (px)
+HELP_SPLASH_SCALE = 1.00  # 0.90 / 0.80 si encore trop grand
 
 # --- Bibli de thèmes (issus de Garage) ---
 THEMES = {
@@ -768,6 +776,13 @@ class WarpocalypseApp:
         try:
             exe_dir = os.path.dirname(os.path.abspath(sys.executable))
             candidates.append(os.path.join(exe_dir, "assets"))
+
+            # 2bis) macOS .app bundle : Contents/Resources/assets
+            # sys.executable -> .../Warpocalypse.app/Contents/MacOS/warpocalypse
+            # assets attendus -> .../Warpocalypse.app/Contents/Resources/assets
+            contents_dir = os.path.abspath(os.path.join(exe_dir, ".."))  # .../Contents
+            resources_dir = os.path.join(contents_dir, "Resources")
+            candidates.append(os.path.join(resources_dir, "assets"))
         except Exception:
             pass
 
@@ -794,15 +809,23 @@ class WarpocalypseApp:
 
         try:
             img = Image.open(splash_path).convert("RGBA")
-            max_w = 640
             w, h = img.size
-            if w > max_w and w > 0:
-                ratio = max_w / float(w)
-                img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+
+            if w > 0 and h > 0:
+                # Ratio de réduction (jamais d'agrandissement)
+                rw = HELP_SPLASH_MAX_W / float(w) if HELP_SPLASH_MAX_W else 1.0
+                rh = HELP_SPLASH_MAX_H / float(h) if HELP_SPLASH_MAX_H else 1.0
+                ratio = min(1.0, rw, rh) * float(HELP_SPLASH_SCALE)
+
+                if ratio < 1.0:
+                    img = img.resize(
+                        (max(1, int(w * ratio)), max(1, int(h * ratio))),
+                        Image.LANCZOS,
+                    )
+
             self._splash_image = ImageTk.PhotoImage(img)
         except Exception:
             self._splash_image = None
-
     def _apply_splash_layer(self) -> None:
         """Applique la splash au label (si présent)."""
         if self._splash_label is None or self._splash_image is None:

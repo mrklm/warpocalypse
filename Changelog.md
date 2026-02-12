@@ -6,6 +6,15 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 
 ---
 
+## [1.1.9] 2026/02/12
+
+### Modifié
+
+ - Chemin image sous macOS 
+ - Réctification de la taille de l'image sous Windows & MacOS 
+
+---
+
 ## [1.1.8] 2026/02/11
 
 ### Modifié

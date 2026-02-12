@@ -54,7 +54,8 @@ Il dépend de probabilités.
 
 ## 3. Les grains : la base de tout
 
-Un **grain** est un fragment audio très court (quelques millisecondes à quelques centaines de millisecondes).
+Un **grain** est un fragment audio très court 
+(quelques millisecondes à quelques centaines de millisecondes).
 
 Les grains :
 - sont traités individuellement

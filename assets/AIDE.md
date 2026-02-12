@@ -1,8 +1,5 @@
 
 
-# AIDE — Comprendre Warpocalypse
-
-
 Warpocalypse n’est pas un effet audio classique.  
 Ce n’est ni un delay, ni un pitch-shifter continu, ni un multi-effet en chaîne.
 

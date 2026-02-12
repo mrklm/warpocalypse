@@ -26,7 +26,7 @@ from audio_io import load_audio, export_wav, get_ffmpeg_status_short
 from engine import render
 
 APP_NAME = "Warpocalypse"
-APP_VERSION = "1.1.9"
+APP_VERSION = "1.1.10"
 
 APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
 DEFAULT_GEOMETRY = "1000x740"
@@ -709,19 +709,49 @@ class WarpocalypseApp:
         self._help_text_widget.configure(font=help_font)
         self._help_text_widget.configure(state="disabled")
 
-        # Charger assets/AIDE.md (lecture ici, rendu via _render_help_overlay)
-        help_path = os.path.join(self._assets_dir(), "AIDE.md")
+        # Charger AIDE.md (dev + builds : PyInstaller/AppImage/tar.gz)
         content: str | None = None
-        if os.path.isfile(help_path):
-            try:
-                with open(help_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-            except Exception:
-                content = None
+
+        candidates: list[str] = []
+
+        # 1) Emplacement attendu : assets/
+        candidates.append(os.path.join(self._assets_dir(), "AIDE.md"))
+
+        # 2) PyInstaller onefile : _MEIPASS (parfois les datas sont à la racine)
+        meipass = getattr(sys, "_MEIPASS", None)
+        if isinstance(meipass, str) and meipass:
+            candidates.append(os.path.join(meipass, "AIDE.md"))
+            candidates.append(os.path.join(meipass, "assets", "AIDE.md"))
+
+        # 3) À côté de l’exécutable (onedir / AppImage)
+        try:
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            candidates.append(os.path.join(exe_dir, "AIDE.md"))
+            candidates.append(os.path.join(exe_dir, "assets", "AIDE.md"))
+
+            # 3bis) macOS .app : Contents/Resources
+            contents_dir = os.path.abspath(os.path.join(exe_dir, ".."))
+            resources_dir = os.path.join(contents_dir, "Resources")
+            candidates.append(os.path.join(resources_dir, "AIDE.md"))
+            candidates.append(os.path.join(resources_dir, "assets", "AIDE.md"))
+        except Exception:
+            pass
+
+        # 4) Dev : à côté du script
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates.append(os.path.join(base_dir, "AIDE.md"))
+        candidates.append(os.path.join(base_dir, "assets", "AIDE.md"))
+
+        for p in candidates:
+            if os.path.isfile(p):
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    break
+                except Exception:
+                    content = None
 
         self._help_content = content
-
-
 
         # Rendu initial de l'aide (texte centré + image si dispo)
         try:

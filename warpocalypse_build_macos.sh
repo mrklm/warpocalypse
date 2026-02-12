@@ -77,6 +77,17 @@ ARCH="$(python -c "import platform; print(platform.machine())")"
 DMG_NAME="${APP_NAME}-v${VERSION}-macOS-${ARCH}.dmg"
 DMG_OUT="${RELEASES_DIR}/${DMG_NAME}"
 
+# -------- tools (ffmpeg/ffprobe) --------
+TOOLS_DIR="${ROOT_DIR}/tools"
+TOOLS_MAC_DIR="${TOOLS_DIR}/macos-${ARCH}"
+FFMPEG_SRC="${TOOLS_MAC_DIR}/ffmpeg"
+FFPROBE_SRC="${TOOLS_MAC_DIR}/ffprobe"
+
+# -------- sanity checks tools --------
+[[ -d "${TOOLS_MAC_DIR}" ]] || die "Dossier tools macOS introuvable: ${TOOLS_MAC_DIR}"
+[[ -f "${FFMPEG_SRC}" ]] || die "ffmpeg introuvable: ${FFMPEG_SRC}"
+[[ -f "${FFPROBE_SRC}" ]] || die "ffprobe introuvable: ${FFPROBE_SRC}"
+
 echo "=== Python / pip ==="
 python -V
 python -m pip install -U pip wheel setuptools
@@ -109,6 +120,8 @@ python -m PyInstaller \
   --icon "${ICON_ICNS}" \
   --add-data "${AIDE_MD}:assets" \
   --add-data "${SPLASH_PNG}:assets" \
+  --add-binary "${FFMPEG_SRC}:tools/macos-${ARCH}" \
+  --add-binary "${FFPROBE_SRC}:tools/macos-${ARCH}" \
   "${ENTRYPOINT}"
 
 # ✅ Détection robuste du .app (PyInstaller varie selon config)
@@ -127,8 +140,10 @@ fi
 
 echo "=== Bundle détecté: ${APP_BUNDLE} ==="
 
-# -------- Vérif post-build : assets embarqués --------
+# -------- Vérif post-build : assets + tools embarqués --------
 ASSETS_IN_APP="${APP_BUNDLE}/Contents/Resources/assets"
+TOOLS_IN_APP="${APP_BUNDLE}/Contents/Resources/tools/macos-${ARCH}"
+
 echo "=== Vérification assets dans le bundle ==="
 if [[ ! -d "${ASSETS_IN_APP}" ]]; then
   echo "Dossier assets introuvable dans le .app: ${ASSETS_IN_APP}"
@@ -140,6 +155,12 @@ fi
 [[ -f "${ASSETS_IN_APP}/AIDE.md" ]] || die "AIDE.md non présent dans le bundle: ${ASSETS_IN_APP}/AIDE.md"
 [[ -f "${ASSETS_IN_APP}/warpocalypse.png" ]] || die "warpocalypse.png non présent dans le bundle: ${ASSETS_IN_APP}/warpocalypse.png"
 echo "OK: AIDE.md + warpocalypse.png présents dans ${ASSETS_IN_APP}"
+
+echo "=== Vérification ffmpeg/ffprobe dans le bundle ==="
+[[ -f "${TOOLS_IN_APP}/ffmpeg" ]] || die "ffmpeg non présent dans le bundle: ${TOOLS_IN_APP}/ffmpeg"
+[[ -f "${TOOLS_IN_APP}/ffprobe" ]] || die "ffprobe non présent dans le bundle: ${TOOLS_IN_APP}/ffprobe"
+chmod +x "${TOOLS_IN_APP}/ffmpeg" "${TOOLS_IN_APP}/ffprobe" || true
+echo "OK: ffmpeg + ffprobe présents et exécutables dans ${TOOLS_IN_APP}"
 
 # -------- DMG staging --------
 echo "=== Création DMG (staging) ==="

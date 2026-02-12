@@ -26,7 +26,7 @@ from audio_io import load_audio, export_wav, get_ffmpeg_status_short
 from engine import render
 
 APP_NAME = "Warpocalypse"
-APP_VERSION = "1.1.10"
+APP_VERSION = "1.1.11"
 
 APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
 DEFAULT_GEOMETRY = "1000x740"
@@ -826,15 +826,21 @@ class WarpocalypseApp:
         # Fallback (chemin attendu en dev)
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
-
     def _load_splash_image(self) -> None:
-        """Charge assets/warpocalypse.png via Pillow (si disponible)."""
+        """Charge et redimensionne assets/warpocalypse.png."""
+
         self._splash_image = None
-        if Image is None or ImageTk is None:
-            return
 
         splash_path = os.path.join(self._assets_dir(), "warpocalypse.png")
         if not os.path.isfile(splash_path):
+            return
+
+        if Image is None or ImageTk is None:
+            # Fallback sans resize
+            try:
+                self._splash_image = tk.PhotoImage(file=splash_path)
+            except Exception:
+                self._splash_image = None
             return
 
         try:
@@ -842,9 +848,8 @@ class WarpocalypseApp:
             w, h = img.size
 
             if w > 0 and h > 0:
-                # Ratio de réduction (jamais d'agrandissement)
-                rw = HELP_SPLASH_MAX_W / float(w) if HELP_SPLASH_MAX_W else 1.0
-                rh = HELP_SPLASH_MAX_H / float(h) if HELP_SPLASH_MAX_H else 1.0
+                rw = HELP_SPLASH_MAX_W / float(w)
+                rh = HELP_SPLASH_MAX_H / float(h)
                 ratio = min(1.0, rw, rh) * float(HELP_SPLASH_SCALE)
 
                 if ratio < 1.0:
@@ -854,8 +859,11 @@ class WarpocalypseApp:
                     )
 
             self._splash_image = ImageTk.PhotoImage(img)
+
         except Exception:
             self._splash_image = None
+
+
     def _apply_splash_layer(self) -> None:
         """Applique la splash au label (si présent)."""
         if self._splash_label is None or self._splash_image is None:

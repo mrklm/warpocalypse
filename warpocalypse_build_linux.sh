@@ -9,10 +9,11 @@ set -euo pipefail
 #
 # Embarque ffmpeg + ffprobe depuis: tools/linux-x86_64/
 #
+# Pillow est installé explicitement pour embarquer l'image d'aide.
+#
 # Usage:
 #   ./warpocalypse_build_linux.sh 1.1.6
-#   ./warpocalypse_build_linux.sh 1.1.6 --clean
-#   ./warpocalypse_build_linux.sh 1.1.6 --clean --no-download-appimagetool
+#   ./warpocalypse_build_linux.sh 1.1.6 --no-download-appimagetool
 # ----------------------------------------------------
 
 APP_NAME="warpocalypse"
@@ -37,6 +38,13 @@ SPEC_FILE="${PROJECT_ROOT}/${APP_NAME}.spec"
 die() { echo "Erreur: $*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "Commande manquante: $1"; }
 
+cleanup() {
+  deactivate 2>/dev/null || true
+  rm -rf "${BUILD_DIR}" "${DIST_DIR}" "${APPDIR_DIR}" "${VENV_DIR}" 2>/dev/null || true
+  rm -f "${SPEC_FILE}" 2>/dev/null || true
+}
+trap cleanup EXIT
+
 # -------- args --------
 if [[ $# -lt 1 ]]; then
   die "Version requise. Exemple: ./warpocalypse_build_linux.sh 1.1.6"
@@ -45,12 +53,9 @@ fi
 VERSION="$1"
 shift
 
-DO_CLEAN=0
 NO_DL_APPIMAGETOOL=0
-
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --clean) DO_CLEAN=1; shift ;;
     --no-download-appimagetool) NO_DL_APPIMAGETOOL=1; shift ;;
     *) die "Option inconnue: $1" ;;
   esac
@@ -84,8 +89,7 @@ need_cmd mkdir
 [[ -f "${FFPROBE_SRC}" ]] || die "ffprobe introuvable: ${FFPROBE_SRC}"
 
 # -------- clean begin --------
-rm -rf "${BUILD_DIR}" "${DIST_DIR}" "${APPDIR_DIR}"
-rm -f "${SPEC_FILE}"
+cleanup
 mkdir -p "${RELEASES_DIR}"
 
 # -------- venv build --------
@@ -94,7 +98,15 @@ python3 -m venv "${VENV_DIR}"
 source "${VENV_DIR}/bin/activate"
 
 python -m pip install -U pip wheel setuptools >/dev/null
+
+# Dépendances du projet
 python -m pip install -r "${PROJECT_ROOT}/requirements.txt"
+
+# Pillow (image d'aide) : install explicite + vérif dure
+python -m pip install Pillow
+python -c "from PIL import Image, ImageTk; print('Pillow OK')"
+
+# Build deps
 python -m pip install pyinstaller
 
 # -------- pyinstaller --------
@@ -122,7 +134,7 @@ else
   die "Dossier assets/ introuvable: ${ASSETS_SRC}"
 fi
 
-# Vérif dure : AIDE.md doit exister (sinon l'AppImage aura le bug)
+# Vérif dure : AIDE.md doit exister
 [[ -f "${ASSETS_DST}/AIDE.md" ]] || die "assets/AIDE.md manquant dans ${ASSETS_DST} (il sera introuvable en AppImage)."
 
 # -------- AppDir --------
@@ -133,6 +145,10 @@ mkdir -p \
 
 # Copie app PyInstaller
 cp -a "${DIST_DIR}/${APP_NAME}/"* "${APPDIR_DIR}/usr/bin/"
+
+# Vérification dure : l'image (et l'aide) doivent être présentes dans l'AppDir
+[[ -f "${APPDIR_DIR}/usr/bin/assets/warpocalypse.png" ]] || die "warpocalypse.png absent dans AppDir/usr/bin/assets (image d'aide impossible)"
+[[ -f "${APPDIR_DIR}/usr/bin/assets/AIDE.md" ]] || die "AIDE.md absent dans AppDir/usr/bin/assets (aide impossible)"
 
 # Embarque tools (ffmpeg/ffprobe)
 mkdir -p "${APPDIR_DIR}/usr/bin/tools/linux-x86_64"
@@ -217,16 +233,4 @@ echo "Build terminé."
 echo "Sorties:"
 ls -lh "${RELEASES_DIR}" | sed 's/^/  /'
 echo ""
-
-# -------- clean end (optional) --------
-deactivate || true
-
-# Supprime le .spec même si --clean n'est pas demandé (systématique)
-rm -f "${SPEC_FILE}"
-
-if [[ "${DO_CLEAN}" -eq 1 ]]; then
-  rm -rf "${BUILD_DIR}" "${DIST_DIR}" "${APPDIR_DIR}" "${VENV_DIR}"
-  echo "Nettoyage effectué (build/dist/AppDir/.venv-build supprimés)."
-else
-  echo "Nettoyage non effectué. Ajouter --clean pour supprimer build/dist/AppDir/.venv-build."
-fi
+echo "Nettoyage: build/dist/AppDir/.venv-build supprimés automatiquement (trap EXIT)."

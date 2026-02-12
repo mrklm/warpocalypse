@@ -11,6 +11,7 @@ Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 ### Modifié
 
  - Chemin image sous macOS 
+ 
 ---
 
 ## [1.1.9] 2026/02/12

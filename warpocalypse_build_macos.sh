@@ -33,6 +33,10 @@ ENTRYPOINT="${ROOT_DIR}/warpocalypse.py"
 REQ_FILE="${ROOT_DIR}/requirements.txt"
 ICON_ICNS="${ROOT_DIR}/assets/warpocalypse.icns"
 
+# --- Datas à embarquer dans le bundle ---
+AIDE_MD="${ROOT_DIR}/assets/AIDE.md"
+SPLASH_PNG="${ROOT_DIR}/assets/warpocalypse.png"
+
 die() { echo "ERREUR: $*" >&2; exit 1; }
 
 cleanup() {
@@ -46,8 +50,10 @@ cd "${ROOT_DIR}"
 
 # -------- sanity checks --------
 [[ -f "${ENTRYPOINT}" ]] || die "Entrypoint introuvable: ${ENTRYPOINT}"
-[[ -f "${REQ_FILE}" ]]   || die "requirements.txt introuvable: ${REQ_FILE}"
-[[ -f "${ICON_ICNS}" ]]  || die "Icône .icns introuvable: ${ICON_ICNS}"
+[[ -f "${REQ_FILE}"   ]] || die "requirements.txt introuvable: ${REQ_FILE}"
+[[ -f "${ICON_ICNS}"  ]] || die "Icône .icns introuvable: ${ICON_ICNS}"
+[[ -f "${AIDE_MD}"    ]] || die "AIDE.md introuvable: ${AIDE_MD}"
+[[ -f "${SPLASH_PNG}" ]] || die "Image splash introuvable: ${SPLASH_PNG}"
 
 mkdir -p "${RELEASES_DIR}"
 
@@ -101,6 +107,8 @@ python -m PyInstaller \
   --onedir \
   --windowed \
   --icon "${ICON_ICNS}" \
+  --add-data "${AIDE_MD}:assets" \
+  --add-data "${SPLASH_PNG}:assets" \
   "${ENTRYPOINT}"
 
 # ✅ Détection robuste du .app (PyInstaller varie selon config)
@@ -118,6 +126,20 @@ else
 fi
 
 echo "=== Bundle détecté: ${APP_BUNDLE} ==="
+
+# -------- Vérif post-build : assets embarqués --------
+ASSETS_IN_APP="${APP_BUNDLE}/Contents/Resources/assets"
+echo "=== Vérification assets dans le bundle ==="
+if [[ ! -d "${ASSETS_IN_APP}" ]]; then
+  echo "Dossier assets introuvable dans le .app: ${ASSETS_IN_APP}"
+  echo "Contenu Resources/:"
+  ls -la "${APP_BUNDLE}/Contents/Resources" || true
+  die "Les datas PyInstaller (assets) ne semblent pas embarquées."
+fi
+
+[[ -f "${ASSETS_IN_APP}/AIDE.md" ]] || die "AIDE.md non présent dans le bundle: ${ASSETS_IN_APP}/AIDE.md"
+[[ -f "${ASSETS_IN_APP}/warpocalypse.png" ]] || die "warpocalypse.png non présent dans le bundle: ${ASSETS_IN_APP}/warpocalypse.png"
+echo "OK: AIDE.md + warpocalypse.png présents dans ${ASSETS_IN_APP}"
 
 # -------- DMG staging --------
 echo "=== Création DMG (staging) ==="

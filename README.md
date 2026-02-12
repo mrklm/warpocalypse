@@ -18,18 +18,18 @@ L’objectif est **l’accident contrôlé**.
 ## 📥 Téléchargement
 
 - 🐧 **Linux**
-  - [warpocalypse-1.1.7-linux-x86_64.AppImage](https://github.com/mrklm/warpocalypse/releases)
-  - [warpocalypse-1.1.7-linux-x86_64.AppImage.SHA256](https://github.com/mrklm/warpocalypse/releases)
-  - [warpocalypse-1.1.7-linux-x86_64.tar.gz](https://github.com/mrklm/warpocalypse/releases)
-  - [warpocalypse-1.1.7-linux-x86_64.tar.gz.SHA256](https://github.com/mrklm/warpocalypse/releases)
+  - [warpocalypse-1.1.12-linux-x86_64.AppImage](https://github.com/mrklm/warpocalypse/releases)
+  - [warpocalypse-1.1.12-linux-x86_64.AppImage.SHA256](https://github.com/mrklm/warpocalypse/releases)
+  - [warpocalypse-1.1.12-linux-x86_64.tar.gz](https://github.com/mrklm/warpocalypse/releases)
+  - [warpocalypse-1.1.12-linux-x86_64.tar.gz.SHA256](https://github.com/mrklm/warpocalypse/releases)
   
 - 🍎 **macOS**
-  - [warpocalypse-1.1.8-macOS-x86_64.dmg](https://github.com/mrklm/warpocalypse/releases)
-  - [warpocalypse-1.1.8-macOS-x86_64.dmg.sha256](https://github.com/mrklm/warpocalypse/releases)
+  - [warpocalypse-1.1.12-macOS-x86_64.dmg](https://github.com/mrklm/warpocalypse/releases)
+  - [warpocalypse-1.1.12-macOS-x86_64.dmg.sha256](https://github.com/mrklm/warpocalypse/releases)
   - 
 - 🪟 **Windows**  
-  - [warpocalypse-v1.1.8-windows-x86_64.zip](https://github.com/mrklm/warpocalypse/releases)
-  - [warpocalypse-v1.1.8-windows-x86_64.zip.SHA256](https://github.com/mrklm/warpocalypse/releases)
+  - [warpocalypse-v1.1.10-windows-x86_64.zip](https://github.com/mrklm/warpocalypse/releases)
+  - [warpocalypse-v1.1.10-windows-x86_64.zip.SHA256](https://github.com/mrklm/warpocalypse/releases)
 
 ---   
 ## ✨ Fonctionnalités principales

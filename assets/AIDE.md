@@ -195,7 +195,7 @@ C’est un excellent outil pour être surpris **sans perdre le contrôle**.
 
 - Warpocalypse travaille **par grains**
 - le warp est **probabiliste**
-- Prob est la clé
+- le bouton Prob est la clé
 - sans randomisation, le warp peut être mathématiquement actif mais perceptuellement discret
 - le chaos a des garde-fous (volontairement)
 

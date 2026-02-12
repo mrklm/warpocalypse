@@ -26,7 +26,7 @@ from audio_io import load_audio, export_wav, get_ffmpeg_status_short
 from engine import render
 
 APP_NAME = "Warpocalypse"
-APP_VERSION = "1.1.11"
+APP_VERSION = "1.1.12"
 
 APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
 DEFAULT_GEOMETRY = "1000x740"
@@ -401,7 +401,6 @@ class WarpocalypseApp:
         self._help_content: str | None = None
 
         # Splash image (warpocalypse.png)
-        self._splash_label: tk.Label | None = None
         self._splash_image: object | None = None
 
         # Mode Loop (toggle)
@@ -418,9 +417,9 @@ class WarpocalypseApp:
         self._build_ui()
         self.lbl_ffmpeg.configure(text=get_ffmpeg_status_short())
         self._load_splash_image()
-        self._apply_splash_layer()
         self._render_help_overlay()
         self._update_help_visibility()
+
     def _choose_random_theme(self) -> None:
         names = list(THEMES.keys())
         if not names:
@@ -535,8 +534,6 @@ class WarpocalypseApp:
             style="Panel.TLabel",
         )
         self.lbl_ffmpeg.grid(row=0, column=0, sticky="w")
-
-
 
         # Thème à droite
         frm_theme = ttk.Frame(topbar, style="Panel.TFrame")
@@ -684,15 +681,6 @@ class WarpocalypseApp:
         self.canvas.bind("<B1-Motion>", self._on_canvas_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_canvas_up)
 
-        # Splash (warpocalypse.png) : couche au-dessus de la waveform
-        self._splash_label = tk.Label(
-            wave_container,
-            bg=self.theme.get("FIELD", "black"),
-            borderwidth=0,
-            highlightthickness=0,
-        )
-        self._splash_label.grid(row=0, column=0, sticky="nsew")
-
         # Overlay AIDE (fond noir, texte blanc, police 14)
         self._help_text_widget = tk.Text(
             wave_container,
@@ -826,53 +814,70 @@ class WarpocalypseApp:
         # Fallback (chemin attendu en dev)
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
-    def _load_splash_image(self) -> None:
-        """Charge et redimensionne assets/warpocalypse.png."""
-
-        self._splash_image = None
-
-        splash_path = os.path.join(self._assets_dir(), "warpocalypse.png")
-        if not os.path.isfile(splash_path):
-            return
-
-        if Image is None or ImageTk is None:
-            # Fallback sans resize
-            try:
-                self._splash_image = tk.PhotoImage(file=splash_path)
-            except Exception:
-                self._splash_image = None
-            return
-
+    def _set_startup_status(self, msg: str) -> None:
+        """Affiche un statut de démarrage (utile en build)."""
         try:
-            img = Image.open(splash_path).convert("RGBA")
-            w, h = img.size
-
-            if w > 0 and h > 0:
-                rw = HELP_SPLASH_MAX_W / float(w)
-                rh = HELP_SPLASH_MAX_H / float(h)
-                ratio = min(1.0, rw, rh) * float(HELP_SPLASH_SCALE)
-
-                if ratio < 1.0:
-                    img = img.resize(
-                        (max(1, int(w * ratio)), max(1, int(h * ratio))),
-                        Image.LANCZOS,
-                    )
-
-            self._splash_image = ImageTk.PhotoImage(img)
-
-        except Exception:
-            self._splash_image = None
-
-
-    def _apply_splash_layer(self) -> None:
-        """Applique la splash au label (si présent)."""
-        if self._splash_label is None or self._splash_image is None:
-            return
-        try:
-            self._splash_label.configure(image=self._splash_image)
-            self._splash_label.image = self._splash_image
+            if hasattr(self, "lbl_info") and self.lbl_info is not None:
+                self.lbl_info.configure(text=msg)
         except Exception:
             pass
+
+
+    def _load_splash_image(self) -> None:
+        """Charge la splash image (assets/warpocalypse.png) avec resize via Pillow."""
+        self._splash_image = None
+
+        assets_dir = self._assets_dir()
+        splash_path = os.path.join(assets_dir, "warpocalypse.png")
+
+        debug = (os.environ.get("WARP_DEBUG_SPLASH", "").strip() == "1")
+
+        if not os.path.isfile(splash_path):
+            msg = f"Splash: introuvable -> {splash_path}"
+            if debug:
+                print(msg, file=sys.stderr)
+            return
+
+        # --- Pillow en priorité (resize actif) ---
+        if Image is not None and ImageTk is not None:
+            try:
+                img = Image.open(splash_path).convert("RGBA")
+                w, h = img.size
+
+                if w > 0 and h > 0:
+                    rw = HELP_SPLASH_MAX_W / float(w) if HELP_SPLASH_MAX_W else 1.0
+                    rh = HELP_SPLASH_MAX_H / float(h) if HELP_SPLASH_MAX_H else 1.0
+                    ratio = min(1.0, rw, rh) * float(HELP_SPLASH_SCALE)
+
+                    if abs(ratio - 1.0) > 1e-6:
+                        img = img.resize(
+                            (max(1, int(w * ratio)), max(1, int(h * ratio))),
+                            Image.LANCZOS,
+                        )
+
+                self._splash_image = ImageTk.PhotoImage(img)
+                if debug:
+                    print("Splash: OK (Pillow)", file=sys.stderr)
+                return
+
+            except Exception as e:
+                msg = f"Splash: échec Pillow -> {e}"
+                if debug:
+                    print(msg, file=sys.stderr)
+
+
+        # --- Fallback Tk (sans resize) ---
+        try:
+            self._splash_image = tk.PhotoImage(file=splash_path)
+            if debug:
+                print("Splash: OK (Tk)", file=sys.stderr)
+
+        except Exception as e:
+            msg = f"Splash: échec Tk -> {e}"
+            if debug:
+                print(msg, file=sys.stderr)
+            self._splash_image = None
+
 
     def _render_help_overlay(self) -> None:
         """Met à jour le contenu de l'aide (image + texte centré)."""
@@ -896,8 +901,12 @@ class WarpocalypseApp:
                     self._help_text_widget.image_create("end", image=self._splash_image)
                     self._help_text_widget._header_image = self._splash_image
                     self._help_text_widget.insert("end", "\n\n")
-                except Exception:
-                    pass
+                except Exception as e:
+                    try:
+                        self._help_text_widget.insert("end", f"[Image d'aide non affichable: {e}]\n\n")
+                    except Exception:
+                        pass
+
 
             self._help_text_widget.insert("end", content)
             self._help_text_widget.tag_configure("center", justify="center")
@@ -910,12 +919,10 @@ class WarpocalypseApp:
                 pass
 
     def _update_help_visibility(self) -> None:
-        """Gère les couches : aide / splash / waveform.
+        """Gère les couches : aide / waveform.
 
         - Si l'aide est cochée : l'overlay d'aide passe au-dessus.
-        - Si l'aide est décochée :
-            - s'il n'y a PAS d'audio chargé : on montre la splash (warpocalypse.png)
-            - s'il y a un audio : on montre la waveform (la splash passe en dessous)
+        - Si l'aide est décochée : l'overlay d'aide passe en dessous (waveform visible).
         """
         if self._help_text_widget is None:
             return
@@ -927,26 +934,11 @@ class WarpocalypseApp:
                 self._help_text_widget.lift()
             except Exception:
                 pass
-            return
-
-        # Aide masquée
-        try:
-            self._help_text_widget.lower()
-        except Exception:
-            pass
-
-        has_audio = (self.src_audio is not None) or (self.out_audio is not None)
-
-        # Quand un audio est chargé, la waveform doit être visible (splash en dessous).
-        if self._splash_label is not None:
+        else:
             try:
-                if has_audio:
-                    self._splash_label.lower()
-                else:
-                    self._splash_label.lift()
+                self._help_text_widget.lower()
             except Exception:
                 pass
-    # ---------------- Mode Loop ----------------
 
     def _on_loop_mode_changed(self) -> None:
         """Callback du mode loop (case à cocher)."""

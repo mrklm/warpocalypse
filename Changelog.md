@@ -4,6 +4,28 @@ Toutes les modifications notables de ce projet sont documentées ici.
 Le format suit l’esprit de *Keep a Changelog*, sans rigidité dogmatique.
 
 
+
+
+---
+
+## [1.1.12] 2026/02/12
+
+### Ajouté
+
+ - ligne 40: réglages fin de la taille de l'image
+
+### Modifié
+
+ - Affichage de l'image pour Linux
+ 
+---
+
+## [1.1.11] 2026/02/12
+
+### Modifié
+
+ - indentation malencontreuse 
+ 
 ---
 
 ## [1.1.10] 2026/02/12
